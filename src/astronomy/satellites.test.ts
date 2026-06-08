@@ -30,6 +30,28 @@ describe("satellites", () => {
     expect(pos!.altitude).toBeLessThan(500);
   });
 
+  it("computes topocentric look angles when given an observer", () => {
+    const tles = parseTLEs(ISS_TLE_RAW);
+    const date = new Date("2024-01-15T12:00:00Z");
+
+    // Without an observer there are no topocentric angles.
+    const geocentric = getSatellitePosition(tles[0], date);
+    expect(geocentric!.elevationAngle).toBeUndefined();
+    expect(geocentric!.azimuth).toBeUndefined();
+
+    // This observer is ~15° from the ISS sub-satellite point, so the ISS sits
+    // low on its horizon (~5° elevation). The old geocentric RA/Dec→horizontal
+    // path reported ~74° here — a ~70° error — so a low value proves the fix.
+    const observer = { latitude: 15, longitude: 167 };
+    const topo = getSatellitePosition(tles[0], date, observer);
+    expect(topo!.elevationAngle).toBeGreaterThan(-5);
+    expect(topo!.elevationAngle).toBeLessThan(30);
+    expect(topo!.azimuth).toBeGreaterThanOrEqual(0);
+    expect(topo!.azimuth).toBeLessThan(360);
+    // RA/Dec are geocentric and must not change when an observer is supplied.
+    expect(topo!.ra).toBeCloseTo(geocentric!.ra, 5);
+  });
+
   it("returns null for a corrupted TLE", () => {
     const badTLE = {
       name: "FAKE",

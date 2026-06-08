@@ -47,15 +47,20 @@ function getJulianDate(date: Date): number {
   return date.getTime() / 86400000 + 2440587.5;
 }
 
-function solveKepler(M: number, e: number): number {
-  // Iteratively solve Kepler's equation: E - e*sin(E) = M
+function solveKepler(Mdeg: number, e: number): number {
+  // Solve Kepler's equation M = E - e*sin(E) by Newton's method.
+  // M and E must be in the SAME units; we work in radians (e*sin(E) is radians),
+  // then return E in degrees for the callers. Mixing degrees with the radian-valued
+  // e*sin(E) term under-corrects the eccentric anomaly and skews positions by
+  // several degrees, so keep the whole iteration in radians.
+  const M = toRad(Mdeg);
   let E = M;
   for (let i = 0; i < 50; i++) {
-    const dE = (M - E + e * Math.sin(toRad(E))) / (1 - e * Math.cos(toRad(E)));
+    const dE = (M - E + e * Math.sin(E)) / (1 - e * Math.cos(E));
     E += dE;
-    if (Math.abs(dE) < 1e-10) break;
+    if (Math.abs(dE) < 1e-12) break;
   }
-  return E;
+  return toDeg(E);
 }
 
 function getPlanetEclipticCoords(name: string, date: Date): [number, number, number] {

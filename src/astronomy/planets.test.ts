@@ -27,4 +27,16 @@ describe("getPlanetPosition", () => {
     const planets = getAllPlanets(date);
     expect(planets).toHaveLength(5);
   });
+
+  // Regression guard for the Kepler-equation solver. On 2024-12-01 Mars is in
+  // Cancer at RA ~128°, Dec ~+22° (JPL Horizons). A solver that mixes degrees
+  // with the radian-valued e*sin(E) term lands near RA ~120° — ~8° off — so this
+  // range passes only when eccentricity is handled correctly.
+  it("solves eccentricity correctly: Mars near RA 128° on 2024-12-01", () => {
+    const mars = getPlanetPosition("Mars", new Date("2024-12-01T00:00:00Z"));
+    expect(mars.ra).toBeGreaterThan(125);
+    expect(mars.ra).toBeLessThan(132);
+    expect(mars.dec).toBeGreaterThan(18);
+    expect(mars.dec).toBeLessThan(24);
+  });
 });

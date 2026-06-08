@@ -2,6 +2,17 @@ import { state } from "../store/state";
 
 let panel: HTMLDivElement | null = null;
 
+// Human-readable Moon phase from illuminated fraction + waxing/waning direction.
+function moonPhaseName(illumination: number, waxing: boolean): string {
+  if (illumination < 0.04) return "New Moon";
+  if (illumination > 0.96) return "Full Moon";
+  if (illumination > 0.46 && illumination < 0.54) {
+    return waxing ? "First Quarter" : "Last Quarter";
+  }
+  const shape = illumination < 0.5 ? "Crescent" : "Gibbous";
+  return `${waxing ? "Waxing" : "Waning"} ${shape}`;
+}
+
 export function initInfoPanel(): void {
   panel = document.createElement("div");
   panel.id = "info-panel";
@@ -62,6 +73,20 @@ export function updateInfoPanel(): void {
   <div style="color:rgba(255,255,255,0.6);line-height:1.8">
     Altitude: ${p.alt.toFixed(1)}°<br>
     Azimuth: ${p.az.toFixed(1)}°
+  </div>
+    `;
+  } else if (obj.type === "moon") {
+    const m = obj.data;
+    panel.innerHTML = `
+  <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+    <span style="font-size:10px;padding:2px 7px;border-radius:20px;background:rgba(255,255,255,0.15);color:rgba(255,255,255,0.7);letter-spacing:0.5px">MOON</span>
+    <div style="font-size:15px;font-weight:bold">Moon</div>
+  </div>
+  <div style="color:rgba(255,255,255,0.6);line-height:1.8">
+    Altitude: ${m.alt.toFixed(1)}°<br>
+    Azimuth: ${m.az.toFixed(1)}°<br>
+    Illumination: ${Math.round(m.illumination * 100)}%<br>
+    Phase: ${moonPhaseName(m.illumination, m.waxing)}
   </div>
     `;
   } else if (obj.type === "satellite") {

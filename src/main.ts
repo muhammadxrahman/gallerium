@@ -3,10 +3,11 @@ import { showPermissionPrompt, } from "./components/PermissionPrompt";
 import { getOrientation, isListening } from "./components/Orientation";
 import { initInfoPanel, updateInfoPanel } from "./components/InfoPanel";
 import { handleClick } from "./components/HitDetection";
-import { initCanvas, clearCanvas, renderCompass, altAzToXYPointed, type RenderContext, altAzToXY } from "./render/canvas";
+import { initCanvas, clearCanvas, renderCompass, altAzToXYPointed, type RenderContext } from "./render/canvas";
 import { renderStars, type RenderedStar } from "./render/stars";
 import { renderPlanets, type RenderedPlanet } from "./render/planets";
 import { renderSatellites, type RenderedSatellite } from "./render/satellites";
+import { renderMoon, type RenderedMoon } from "./render/moon";
 import { loadStars } from "./data/stars";
 import { loadTLEs } from "./data/tles";
 import { equatorialToHorizontal } from "./astronomy/coordinates";
@@ -16,13 +17,14 @@ import { getVisibleSatellites } from "./astronomy/satellites";
 import { requestLocation, cachedLocation, saveLocation } from "./utils/geo";
 import { initLocationControl } from "./components/LocationControl";
 import type { Observer } from "./astronomy/coordinates";
-import { getMoonPosition, type MoonPosition } from "./astronomy/moon";
+import { getMoonPosition } from "./astronomy/moon";
 
 // --- State ---
 let observer: Observer | null = cachedLocation();
 let lastStars: RenderedStar[] = [];
 let lastPlanets: RenderedPlanet[] = [];
 let lastSatellites: RenderedSatellite[] = [];
+let lastMoon: RenderedMoon | null = null;
 let isSkyView = false;
 
 const canvas = document.getElementById("sky-canvas") as HTMLCanvasElement;
@@ -123,67 +125,6 @@ function renderSkyView(
   rc.ctx.textAlign = "left";
 }
 
-function renderMoon(
-  rc: RenderContext,
-  moon: MoonPosition & { az: number; alt: number },
-  pointed: boolean,
-  centerAz?: number,
-  centerAlt?: number,
-  fov?: number
-): void {
-  let pos: [number, number] | null = null;
-
-  if (pointed && centerAz !== undefined && centerAlt !== undefined && fov !== undefined) {
-    pos = altAzToXYPointed(moon.alt, moon.az, centerAlt, centerAz, fov, rc);
-  } else {
-    if (moon.alt < 0) return;
-    const [x, y] = altAzToXY(moon.alt, moon.az, rc);
-    pos = [x, y];
-  }
-
-  if (!pos) return;
-  const [x, y] = pos;
-
-  const radius = 8;
-  const illumination = moon.illumination;
-
-  // Glow
-  const glow = rc.ctx.createRadialGradient(x, y, 0, x, y, radius * 3);
-  glow.addColorStop(0, "rgba(255, 248, 220, 0.4)");
-  glow.addColorStop(1, "transparent");
-  rc.ctx.fillStyle = glow;
-  rc.ctx.beginPath();
-  rc.ctx.arc(x, y, radius * 3, 0, Math.PI * 2);
-  rc.ctx.fill();
-
-  // Moon disc
-  rc.ctx.fillStyle = "#fffdf0";
-  rc.ctx.beginPath();
-  rc.ctx.arc(x, y, radius, 0, Math.PI * 2);
-  rc.ctx.fill();
-
-  // Shadow to show phase
-  rc.ctx.fillStyle = "rgba(0, 0, 8, 0.85)";
-  rc.ctx.beginPath();
-  if (illumination < 0.5) {
-    // More than half dark
-    rc.ctx.arc(x, y, radius, Math.PI / 2, -Math.PI / 2, false);
-    const k = (1 - illumination * 2);
-    rc.ctx.ellipse(x, y, radius * k, radius, 0, -Math.PI / 2, Math.PI / 2, false);
-  } else {
-    // More than half lit
-    rc.ctx.arc(x, y, radius, Math.PI / 2, -Math.PI / 2, true);
-    const k = (illumination * 2 - 1);
-    rc.ctx.ellipse(x, y, radius * k, radius, 0, -Math.PI / 2, Math.PI / 2, true);
-  }
-  rc.ctx.fill();
-
-  // Label
-  rc.ctx.fillStyle = "rgba(255, 248, 220, 0.85)";
-  rc.ctx.font = "12px sans-serif";
-  rc.ctx.fillText(`Moon ${Math.round(illumination * 100)}%`, x + radius + 4, y + 4);
-}
-
 // --- Main render loop ---
 function renderFrame() {
   if (!observer) return;
@@ -222,22 +163,22 @@ function renderFrame() {
     observer!,
     lst
   );
-  const renderedMoon = { ...moonPos, az: moonAz, alt: moonAlt };
+  const renderedMoon: RenderedMoon = { ...moonPos, az: moonAz, alt: moonAlt };
 
-  // Satellites
-  const sats = getVisibleSatellites(tlesData, now);
-  const renderedSats: RenderedSatellite[] = sats.map((s) => {
-    const { az, alt } = equatorialToHorizontal(
-      { ra: s.ra, dec: s.dec },
-      observer!,
-      lst
-    );
-    return { ...s, az, alt };
-  });
+  // Satellites — use topocentric look angles computed against the observer.
+  // Satellites are near-field, so the geocentric RA/Dec → horizontal path used
+  // for stars/planets would be wildly off; getVisibleSatellites gives true az/alt.
+  const sats = getVisibleSatellites(tlesData, now, observer);
+  const renderedSats: RenderedSatellite[] = sats.map((s) => ({
+    ...s,
+    az: s.azimuth ?? 0,
+    alt: s.elevationAngle ?? -90,
+  }));
 
   lastStars = rendered;
   lastPlanets = renderedPlanets;
   lastSatellites = renderedSats;
+  lastMoon = renderedMoon;
 
   if (isSkyView && isListening()) {
     const { azimuth, altitude } = getOrientation();
@@ -341,14 +282,14 @@ modeBtn.addEventListener("click", () => {
 
 canvas.addEventListener("click", (e) => {
   const rc = initCanvas(canvas);
-  handleClick(e, rc, lastStars, lastPlanets, lastSatellites);
+  handleClick(e, rc, lastStars, lastPlanets, lastSatellites, lastMoon);
   updateInfoPanel();
 });
 
 canvas.addEventListener("touchend", (e) => {
   e.preventDefault();
   const rc = initCanvas(canvas);
-  handleClick(e, rc, lastStars, lastPlanets, lastSatellites);
+  handleClick(e, rc, lastStars, lastPlanets, lastSatellites, lastMoon);
   updateInfoPanel();
 });
   renderFrame();

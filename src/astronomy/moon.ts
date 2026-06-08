@@ -1,8 +1,9 @@
 export interface MoonPosition {
   ra: number;   // degrees
   dec: number;  // degrees
-  phase: number; // 0-1, 0=new, 0.5=full, 1=new again
-  illumination: number; // 0-1 percentage lit
+  phase: number; // 0-1 illuminated fraction (0=new, 1=full); same value as illumination
+  illumination: number; // 0-1 fraction of the disc lit
+  waxing: boolean; // true while growing (new→full), false while shrinking (full→new)
 }
 
 function toRad(deg: number): number {
@@ -97,10 +98,13 @@ const dB =
   const ra  = normalizeAngle(toDeg(Math.atan2(y, x)));
   const dec = toDeg(Math.asin(z));
 
-  // Phase angle — elongation of Moon from Sun
+  // Phase angle — elongation of Moon from Sun.
+  // 0°→360° as the Moon moves new→full→new. Elongation < 180° means the Moon
+  // leads the Sun (waxing); > 180° means it trails (waning).
   const elongation = normalizeAngle(lambda - (280.4665 + 36000.7698 * T));
   const phase = (1 - Math.cos(toRad(elongation))) / 2;
   const illumination = phase;
+  const waxing = elongation < 180;
 
-  return { ra, dec, phase, illumination };
+  return { ra, dec, phase, illumination, waxing };
 }

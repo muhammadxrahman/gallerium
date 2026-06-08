@@ -2,9 +2,11 @@ import { type RenderContext, altAzToXY } from "../render/canvas";
 import type { RenderedStar } from "../render/stars";
 import type { RenderedPlanet } from "../render/planets";
 import type { RenderedSatellite } from "../render/satellites";
+import type { RenderedMoon } from "../render/moon";
 import { state } from "../store/state";
 
 const HIT_RADIUS = 12; // pixels
+const MOON_HIT_RADIUS = 16; // the Moon disc + glow is larger than a point object
 
 function dist(x1: number, y1: number, x2: number, y2: number): number {
   return Math.sqrt((x1 - x2) ** 2 + (y1 - y2) ** 2);
@@ -15,7 +17,8 @@ export function handleClick(
   rc: RenderContext,
   stars: RenderedStar[],
   planets: RenderedPlanet[],
-  satellites: RenderedSatellite[]
+  satellites: RenderedSatellite[],
+  moon: RenderedMoon | null
 ): void {
   let clientX: number, clientY: number;
 
@@ -31,7 +34,16 @@ export function handleClick(
   const x = clientX - rect.left;
   const y = clientY - rect.top;
 
-  // Check planets first (biggest targets)
+  // Check the Moon first — it's the largest, brightest target.
+  if (moon && moon.alt >= 0) {
+    const [mx, my] = altAzToXY(moon.alt, moon.az, rc);
+    if (dist(x, y, mx, my) < MOON_HIT_RADIUS) {
+      state.selected = { type: "moon", data: moon };
+      return;
+    }
+  }
+
+  // Check planets next (biggest point targets)
   for (const planet of planets) {
     if (planet.alt < 0) continue;
     const [px, py] = altAzToXY(planet.alt, planet.az, rc);

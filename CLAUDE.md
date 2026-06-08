@@ -63,6 +63,11 @@ src/
 3. `equatorialToHorizontal()` converts to Alt/Az for the observer
 4. `altAzToXY()` or `altAzToXYPointed()` converts to canvas pixels
 
+**Satellites bypass step 3.** They are near-field (LEO ~400 km vs Earth's ~6371 km
+radius), so geocentric RA/Dec run through `equatorialToHorizontal` is off by tens of
+degrees. Instead `getVisibleSatellites(tles, date, observer)` computes true topocentric
+Az/Alt via satellite.js `eciToEcf` + `ecfToLookAngles`; RA/Dec is kept only for reference.
+
 **HYG catalog note.** The CSV has quoted headers (`"ra"` not `ra`).
 The parser strips quotes: `headers.split(",").map(h => h.replace(/"/g, "").trim())`.
 RA is stored in hours in HYG — multiply by 15 to get degrees.
@@ -87,11 +92,10 @@ are pure math and must always render, even fully offline with no cached data.
 
 - **Orientation jitter on mode switch**: switching to sky view causes a visible jump
   because the first frame uses a stale orientation value before the device settles.
-- **Satellite RA/Dec is geocentric not topocentric**: acceptable for visual use but
-  means satellite positions can be ~1-2° off from observer's true perspective.
-  Gets resolved if/when we add observer-relative Az/Alt computation directly.
 - **Planet accuracy degrades far from J2000**: the low-precision orbital elements
   are accurate to ~1° near year 2000, drift for dates far from that epoch.
+- **Moon position is geocentric**: no lunar parallax correction, so it can be up to
+  ~1° off from the observer's true perspective. Acceptable for a visual app.
 
 ---
 

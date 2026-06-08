@@ -29,4 +29,14 @@ describe("getMoonPosition", () => {
     const moon = getMoonPosition(fullMoon);
     expect(moon.illumination).toBeGreaterThan(0.9);
   });
+
+  it("reports waxing between new and full moon", () => {
+    // New moon was 2024-01-11; the days after it are waxing toward full (01-25).
+    const waxing = getMoonPosition(new Date("2024-01-18T00:00:00Z"));
+    expect(waxing.waxing).toBe(true);
+
+    // After the 01-25 full moon the disc is shrinking again — waning.
+    const waning = getMoonPosition(new Date("2024-02-01T00:00:00Z"));
+    expect(waning.waxing).toBe(false);
+  });
 });
