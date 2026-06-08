@@ -131,21 +131,107 @@ are pure math and must always render, even fully offline with no cached data.
 
 ---
 
-## What's Not Here Yet
+## Roadmap & Backlog
 
-- Constellation lines (NGC constellation line dataset, free)
-- Hit detection in sky view mode (currently only works in map view)
-- Loading spinner (currently just a status text string)
-- Proper HTTPS for production (currently uses self-signed cert for local dev)
+A running, prioritized backlog toward a standout astronomy app: **beautiful · accurate ·
+real-world useful**. Tiers: **P0** = next up, **P1** = soon, **P2** = later. Check items
+off (`[x]`) and move notable ones to "Shipped" as they land. Keep this list honest — it is
+the single source of truth for what's left.
+
+### Shipped
+- [x] Real Sun (computed, not the bogus HYG "Sol" row) — disc, glow, identify
+- [x] Performance: throttled compute + draw-on-change loop; no per-frame canvas realloc
+- [x] Zoom + pan (wheel/drag/pinch), cursor-anchored
+- [x] Topocentric satellites (true look angles, not geocentric — was ~70° off)
+- [x] Kepler solver unit fix (planets were up to ~8° off)
+- [x] Moon phase name + correct terminator side (waxing/waning)
+- [x] Offline PWA shell + IndexedDB data + iOS update polling
+- [x] Manual location entry / GPS re-request; graceful offline degradation
+- [x] iOS compass heading via `webkitCompassHeading`
+- [x] Tests for the hot paths: projection (`altAzToXY`/`altAzToXYPointed`), hit detection
+  (`pickObject`), TLE parser edge cases — found no regressions
+
+### Beautiful (visual fidelity & UX)
+- [ ] **P0** Day/night sky gradient + twilight bands driven by Sun altitude (sky must not
+  be black at noon); horizon glow. Also answers "is it dark enough to observe yet?"
+- [ ] **P0** Constellation lines + names (free Stellarium / d3-celestial dataset) — the
+  single biggest legibility + "feels like a real sky" win.
+- [ ] **P1** Horizon + ground reference; toggleable meridian / ecliptic / equatorial grid.
+- [ ] **P1** Label decluttering (collision avoidance — labels currently overlap).
+- [ ] **P1** On-canvas selection highlight (today only the DOM info panel reacts).
+- [ ] **P1** Milky Way band.
+- [ ] **P2** Richer star/planet rendering: magnitude→size+alpha curve, subtle glow/twinkle,
+  antialiasing; planet disks + Saturn rings; Moon earthshine/libration.
+- [ ] **P2** First-run onboarding, real loading spinner (replace status string), smooth
+  map↔sky transition, polished chrome/theming.
+- [ ] **P2** Light-pollution / limiting-magnitude (Bortle) slider.
+
+### Accurate (physical correctness)
+- [ ] **P0** Proper AR pose model: use full device orientation (alpha/beta/gamma + screen
+  orientation) → view direction. Current `90 - |beta|` can't point overhead/behind and
+  ignores roll. Fixes both accuracy and the mode-switch jitter. (See Known Issues.)
+- [ ] **P1** Atmospheric refraction near the horizon (~0.5° lift at alt 0) for realistic
+  rise/set and horizon placement.
+- [ ] **P1** Planet apparent magnitudes (currently placeholder `0`) → correct brightness +
+  size; planet phase and angular size.
+- [ ] **P1** Satellite *visibility*, not just position: only flag sats that are sunlit while
+  the observer is in darkness (Sun is now available).
+- [ ] **P2** Lunar topocentric parallax (~1°); precession of J2000 star coords to date;
+  nutation/aberration (sub-arcmin).
+- [ ] **P2** Hit detection in sky view (currently map-view only).
+
+### Real-world applicable (astronomy utility)
+- [ ] **P0** Time control / "time travel": scrub to tonight or any date/time. Everything is
+  already `Date`-parameterized, so this is mostly UI — turns "now" into a planning tool.
+- [ ] **P0** Search + "guide me there": find an object, then pan/zoom (map) or an AR arrow
+  (sky) points you to it.
+- [ ] **P1** Rise/set/transit + twilight times (civil/nautical/astronomical) for
+  Sun/Moon/planets.
+- [ ] **P1** ISS & satellite pass predictions ("visible 9:42pm, rising NW, mag −3").
+- [ ] **P1** Tonight's highlights feed: conjunctions, Moon phase, bright-planet visibility,
+  meteor showers.
+- [ ] **P2** Deep-sky objects (Messier/Caldwell) with positions + info.
+- [ ] **P2** Observing list / favorites; shareable location+time+view URL.
+- [ ] **P2** Settings: coordinate display (alt/az vs RA/dec), magnitude limit, units, i18n.
+
+### Foundation (robustness, code health, ops)
+- [x] **P0** Test the untested hot paths: projection (`altAzToXY` / `altAzToXYPointed`),
+  hit detection (`pickObject`), TLE parser. Done — projection tests assert only
+  model-agnostic invariants so they survive the gnomonic upgrade below.
+- [ ] **P1** Upgrade `altAzToXYPointed` to a true gnomonic (pinhole-camera) projection.
+  Today it places objects by raw (Δaz, Δalt) which over-spreads them near the zenith
+  (azimuth isn't scaled by cos(alt)). Correct but currently an approximation; fold into
+  the AR pose-model work so the camera model is right end-to-end.
+- [ ] **P1** Unify render paths: sky view re-implements star/planet/satellite drawing inline
+  in `main.ts` instead of reusing `render/*`. Move to one drawable path that takes a
+  projection function, so visual changes apply to both views at once.
+- [ ] **P1** Data robustness: source mirror/retry, manual "refresh data", TLE-staleness
+  indicator, surface fetch errors in the UI.
+- [ ] **P1** CI: GitHub Actions running `npm test` + `npm run build` on push.
+- [ ] **P2** Layered canvases (static star layer @ ~1 fps + dynamic satellite layer) if
+  profiling shows the full-scene redraw at the satellite cadence matters.
+- [ ] **P2** Smaller first load: ship a pre-trimmed mag ≤ 6.5 star JSON instead of fetching
+  the full HYG CSV; progressive load.
+- [ ] **P2** PWA polish: PNG icons (broader install support) + manifest screenshots /
+  categories; Lighthouse PWA pass.
+- [ ] **P2** Accessibility: colorblind-safe star colors, contrast, larger-text mode, ARIA
+  labels on controls.
 
 ---
 
 ## Testing Approach
 
-TDD with Vitest. Every astronomy module has a test file.
-Ground truth is cross-checked against Stellarium Web or JPL Horizons.
-Tests use wide tolerances (±5°) for position checks — this is a visual app,
-not a navigation system. Exact wording: "places X in the correct region of the sky."
+TDD with Vitest. Every astronomy module has a test file, plus the render projection
+(`render/canvas.test.ts`), hit detection (`components/HitDetection.test.ts`), and the
+star/TLE parsers. Ground truth for astronomy is cross-checked against Stellarium Web or
+JPL Horizons. Astronomy position tests use wide tolerances (±5°) — this is a visual app,
+not a navigation system ("places X in the correct region of the sky"). Pure geometry
+(projection, hit-testing) is tested exactly, but only via projection-model-agnostic
+invariants (zenith→center, cardinal directions, culling, up/down & east/west signs,
+azimuth wrap) so the tests survive a future gnomonic-projection upgrade.
+
+Hit detection's geometry lives in the pure `pickObject(x, y, rc, …)`; `handleClick` is a
+thin wrapper that extracts event coords and calls it. Test `pickObject`, not `handleClick`.
 
 Run tests:
 ```bash

@@ -63,3 +63,50 @@ describe("satellites", () => {
     expect(pos).toBeNull();
   });
 });
+
+describe("parseTLEs (3-line CelesTrak format)", () => {
+  const TWO = `AAA
+1 11111U ...
+2 11111 ...
+BBB
+1 22222U ...
+2 22222 ...`;
+
+  it("parses every complete name/line1/line2 triple", () => {
+    const tles = parseTLEs(TWO);
+    expect(tles).toHaveLength(2);
+    expect(tles[0]).toMatchObject({ name: "AAA", line1: "1 11111U ...", line2: "2 11111 ..." });
+    expect(tles[1]).toMatchObject({ name: "BBB", line1: "1 22222U ...", line2: "2 22222 ..." });
+  });
+
+  it("handles CRLF line endings (trims the trailing \\r)", () => {
+    const crlf = "AAA\r\n1 11111U ...\r\n2 11111 ...\r\n";
+    const tles = parseTLEs(crlf);
+    expect(tles).toHaveLength(1);
+    expect(tles[0].name).toBe("AAA");
+    expect(tles[0].line2).toBe("2 11111 ...");
+  });
+
+  it("drops a trailing incomplete group rather than emitting a partial TLE", () => {
+    const partial = `AAA
+1 11111U ...
+2 11111 ...
+BBB
+1 22222U ...`; // BBB is missing its line2
+    const tles = parseTLEs(partial);
+    expect(tles).toHaveLength(1);
+    expect(tles[0].name).toBe("AAA");
+  });
+
+  it("ignores surrounding blank lines and whitespace", () => {
+    const padded = `\n\n  AAA  \n 1 11111U ... \n 2 11111 ... \n\n`;
+    const tles = parseTLEs(padded);
+    expect(tles).toHaveLength(1);
+    expect(tles[0]).toMatchObject({ name: "AAA", line1: "1 11111U ...", line2: "2 11111 ..." });
+  });
+
+  it("returns an empty array for empty input", () => {
+    expect(parseTLEs("")).toEqual([]);
+    expect(parseTLEs("   \n  \n")).toEqual([]);
+  });
+});
