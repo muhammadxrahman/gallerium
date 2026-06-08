@@ -6,24 +6,16 @@ const DAY = 24 * HOUR;
 function pad(n: number): string {
   return String(n).padStart(2, "0");
 }
-
-// Local "YYYY-MM-DDTHH:mm" for a datetime-local input.
 function toLocalInput(d: Date): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-// A time-travel control: jump to any date/time to see the sky then, or return to live.
-export function initTimeControl(onChange: () => void): void {
-  const chip = document.createElement("button");
-  chip.id = "time-btn";
-  chip.className = "ui-chip";
-  chip.style.cssText = "position:fixed;top:16px;left:50%;transform:translateX(-50%);z-index:200;";
-  document.body.appendChild(chip);
-
+// Time-travel panel (opened from the toolbar): jump to any date/time, step by
+// hour/day, or return to live. `onChange` fires on every change.
+export function initTimeControl(onChange: () => void): { open: () => void } {
   const panel = document.createElement("div");
-  panel.className = "ui-panel";
-  panel.style.cssText =
-    "position:fixed;top:56px;left:50%;transform:translateX(-50%);z-index:200;display:none;padding:12px;width:min(300px,92vw);";
+  panel.className = "ui-panel bottom-panel";
+  panel.style.display = "none";
 
   const steps = document.createElement("div");
   steps.style.cssText = "display:flex;gap:6px;margin-bottom:10px;";
@@ -61,7 +53,7 @@ export function initTimeControl(onChange: () => void): void {
 
   const live = document.createElement("button");
   live.className = "ui-chip";
-  live.textContent = "● Now (Live)";
+  live.textContent = "Now (Live)";
   live.style.cssText = "width:100%;justify-content:center;";
   live.addEventListener("click", () => {
     goLive();
@@ -75,19 +67,18 @@ export function initTimeControl(onChange: () => void): void {
   document.body.appendChild(panel);
 
   function sync(): void {
-    const t = getSkyTime();
-    chip.textContent = isLive()
-      ? "🕐 Live"
-      : "🕐 " +
-        t.toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
-    chip.classList.toggle("ui-chip-active", !isLive());
-    input.value = toLocalInput(t);
+    input.value = toLocalInput(getSkyTime());
+    live.classList.toggle("ui-chip-active", isLive());
   }
 
-  chip.addEventListener("click", () => {
-    sync(); // refresh the input to the current sky time when opening
-    panel.style.display = panel.style.display === "none" ? "block" : "none";
-  });
+  function open(): void {
+    if (panel.style.display === "none") {
+      sync();
+      panel.style.display = "block";
+    } else {
+      panel.style.display = "none";
+    }
+  }
 
-  sync();
+  return { open };
 }

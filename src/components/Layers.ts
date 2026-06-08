@@ -57,8 +57,8 @@ export function setMagnitudeLimit(value: number): void {
   save();
 }
 
-// "daylight" is surfaced as its own prominent button (see main.ts), not in the panel.
 const ROWS: Array<{ key: BoolKey; label: string }> = [
+  { key: "daylight", label: "Daylight sky" },
   { key: "constellations", label: "Constellations" },
   { key: "constellationNames", label: "Constellation names" },
   { key: "milkyway", label: "Milky Way" },
@@ -66,22 +66,9 @@ const ROWS: Array<{ key: BoolKey; label: string }> = [
   { key: "grid", label: "Grid & meridian" },
 ];
 
-// A small "Layers" button that opens a panel of toggles + a star-density slider.
-// onChange fires on any change so the caller can request a redraw; onRefresh is
-// invoked by the "Refresh data" button.
-export function initLayersControl(onChange: () => void, onRefresh: () => void): void {
-  const btn = document.createElement("button");
-  btn.id = "layers-btn";
-  btn.className = "ui-chip";
-  btn.textContent = "☰ Layers";
-  btn.style.cssText = "position:fixed;top:64px;right:16px;z-index:200;";
-  document.body.appendChild(btn);
-
-  const panel = document.createElement("div");
-  panel.className = "ui-panel";
-  panel.style.cssText =
-    "position:fixed;top:104px;right:16px;z-index:200;display:none;padding:8px;min-width:220px;";
-
+// Build the layer toggles + star-density slider into `container` (the settings
+// sheet). `onChange` fires on any change so the caller can request a redraw.
+export function buildLayersControls(container: HTMLElement, onChange: () => void): void {
   for (const { key, label } of ROWS) {
     const row = document.createElement("label");
     row.className = "ui-row";
@@ -97,12 +84,12 @@ export function initLayersControl(onChange: () => void, onRefresh: () => void): 
     text.textContent = label;
     row.appendChild(cb);
     row.appendChild(text);
-    panel.appendChild(row);
+    container.appendChild(row);
   }
 
   // Star-density / limiting-magnitude slider.
   const sliderWrap = document.createElement("div");
-  sliderWrap.style.cssText = "padding:10px 8px 4px;";
+  sliderWrap.style.cssText = "padding:12px 8px 4px;";
   const sliderLabel = document.createElement("div");
   sliderLabel.style.cssText =
     "font-size:12px;color:rgba(255,255,255,0.6);margin-bottom:6px;display:flex;justify-content:space-between;";
@@ -124,19 +111,5 @@ export function initLayersControl(onChange: () => void, onRefresh: () => void): 
   });
   sliderWrap.appendChild(sliderLabel);
   sliderWrap.appendChild(slider);
-  panel.appendChild(sliderWrap);
-
-  // Manual data refresh (re-fetches star catalog + satellite TLEs, bypassing cache).
-  const refresh = document.createElement("button");
-  refresh.className = "ui-chip";
-  refresh.textContent = "↻ Refresh data";
-  refresh.style.cssText = "width:100%;margin-top:8px;justify-content:center;";
-  refresh.addEventListener("click", () => onRefresh());
-  panel.appendChild(refresh);
-
-  document.body.appendChild(panel);
-
-  btn.addEventListener("click", () => {
-    panel.style.display = panel.style.display === "none" ? "block" : "none";
-  });
+  container.appendChild(sliderWrap);
 }

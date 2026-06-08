@@ -4,17 +4,13 @@ export interface SearchItem {
   sublabel: string;
 }
 
-// A search control: tap to open, type to filter the object list, pick a result to
-// be guided to it. `getItems` is read fresh each open (the catalog can grow after
-// data loads); `onSelect` receives the chosen item's id.
-export function initSearch(getItems: () => SearchItem[], onSelect: (id: string) => void): void {
-  const btn = document.createElement("button");
-  btn.id = "search-btn";
-  btn.className = "ui-chip";
-  btn.textContent = "🔍 Search";
-  btn.style.cssText = "position:fixed;top:112px;left:16px;z-index:200;";
-  document.body.appendChild(btn);
-
+// A search control opened from the toolbar: type to filter the object list, pick a
+// result to be guided to it. `getItems` is read fresh each open (the catalog grows
+// after data loads); `onSelect` receives the chosen item's id. Returns `{ open }`.
+export function initSearch(
+  getItems: () => SearchItem[],
+  onSelect: (id: string) => void
+): { open: () => void } {
   const overlay = document.createElement("div");
   overlay.style.cssText =
     "position:fixed;inset:0;display:none;align-items:flex-start;justify-content:center;background:rgba(0,0,0,0.55);z-index:300;";
@@ -72,11 +68,13 @@ export function initSearch(getItems: () => SearchItem[], onSelect: (id: string) 
     if (e.target === overlay) close();
   });
 
-  btn.addEventListener("click", () => {
+  function open(): void {
     items = getItems();
     input.value = "";
     render(items);
     overlay.style.display = "flex";
     input.focus();
-  });
+  }
+
+  return { open };
 }

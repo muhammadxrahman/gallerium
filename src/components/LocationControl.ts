@@ -14,15 +14,9 @@ function isValidLon(n: number): boolean {
 }
 
 // A manual location control so users can view the sky for any place on Earth,
-// recover from a denied geolocation prompt, or correct a stale cached fix.
-export function initLocationControl(opts: LocationControlOptions): void {
-  const btn = document.createElement("button");
-  btn.id = "location-btn";
-  btn.className = "ui-chip";
-  btn.textContent = "📍 Location";
-  btn.style.cssText = "position:fixed;top:16px;left:16px;z-index:200;";
-  document.body.appendChild(btn);
-
+// recover from a denied geolocation prompt, or correct a stale cached fix. Opened
+// from the settings sheet; returns `{ open }`.
+export function initLocationControl(opts: LocationControlOptions): { open: () => void } {
   const overlay = document.createElement("div");
   overlay.style.cssText = `
     position: fixed;
@@ -97,7 +91,6 @@ export function initLocationControl(opts: LocationControlOptions): void {
     overlay.style.display = "none";
   }
 
-  btn.addEventListener("click", open);
   cancelBtn.addEventListener("click", close);
   overlay.addEventListener("click", (e) => {
     if (e.target === overlay) close();
@@ -131,4 +124,6 @@ export function initLocationControl(opts: LocationControlOptions): void {
       gpsBtn.disabled = false;
     }
   });
+
+  return { open };
 }

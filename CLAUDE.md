@@ -55,11 +55,13 @@ src/
 │   ├── Orientation.ts    # DeviceOrientationEvent → azimuth/altitude (iOS webkitCompassHeading)
 │   ├── pose.ts           # Pure device(α,β,γ) → alt/az via rotation matrix (tested)
 │   ├── PermissionPrompt.ts # iOS orientation permission flow
-│   ├── LocationControl.ts  # Manual lat/long entry + GPS re-request
-│   ├── Layers.ts         # Overlay toggles (constellations, grid, ecliptic, Milky Way) + daylight
-│   ├── TimeControl.ts    # Time-travel chip + panel (datetime / ±h ±d / Live)
+│   ├── LocationControl.ts  # Manual lat/long entry + GPS re-request (modal)
+│   ├── Layers.ts         # buildLayersControls() → toggles + star-density slider (in settings)
+│   ├── TimeControl.ts    # Time-travel panel (datetime / ±h ±d / Live)
 │   ├── Search.ts         # Object search overlay (→ "guide me there")
 │   ├── Highlights.ts     # "Tonight" feed panel
+│   ├── Toolbar.ts        # Bottom toolbar + settings sheet (the single control surface)
+│   ├── icons.ts          # SVG line-icon set (no emoji)
 │   └── Zoom.ts           # Pinch + wheel zoom factor (shared by both views)
 ├── store/
 │   └── state.ts          # Shared selected object state
@@ -161,6 +163,14 @@ view sits near 1 fps instead of 60. To force a recompute (e.g. location change) 
 reallocates+clears the backing store, so it's guarded behind a size check; the DPR scale
 uses `setTransform` (idempotent), not `scale` (which would compound each frame).
 
+**One control surface.** All controls live in a bottom `Toolbar` (Search · Time · Sky/Map ·
+Tonight · Settings) instead of scattered floating chips. Secondary controls (layer toggles,
+daylight, star-density, location, data refresh) live in the **settings sheet** behind the
+Settings button. Each control component exposes an `open()` handle (it no longer creates its
+own chip); main wires toolbar buttons to them. Icons come from `components/icons.ts`
+(SVG line-icons, `currentColor`) — **no emoji anywhere** in the UI. `#status` sits top-center,
+`#info-panel` and the panels anchor above the toolbar.
+
 **Zoom + pan** live in components/Zoom.ts (wheel, mouse-drag, pinch, 1-finger drag;
 double-click/tap resets). Zoom is anchored at the cursor/pinch point so any region can be
 brought into focus. Map view applies both via `applyView(rc)` in main.ts (`rc.radius *=
@@ -217,6 +227,8 @@ the single source of truth for what's left.
 - [x] Real-world P0/P1: time travel (clock + loop reads `getSkyTime()`), search + guide-me-there
   (map centering / AR arrow), rise/set/twilight in the info card, ISS pass prediction,
   "Tonight" highlights feed; fixed quoted-empty HYG names polluting search
+- [x] UI consolidation: scattered chips → one bottom toolbar + settings sheet; replaced all
+  emoji with an SVG line-icon set (`icons.ts`); status/info-panel repositioned clear of it
 
 ### Beautiful (visual fidelity & UX)
 - [x] **P0** Day/night sky gradient + twilight + horizon glow (Sun-altitude driven), with a

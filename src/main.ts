@@ -42,12 +42,14 @@ import {
 import { predictPasses } from "./astronomy/passes";
 import type { Star } from "./data/stars";
 import { requestLocation, cachedLocation, saveLocation } from "./utils/geo";
-import { getSkyTime } from "./utils/clock";
+import { getSkyTime, isLive } from "./utils/clock";
 import { initLocationControl } from "./components/LocationControl";
-import { initLayersControl, getLayers, setLayer } from "./components/Layers";
+import { buildLayersControls, getLayers } from "./components/Layers";
 import { initTimeControl } from "./components/TimeControl";
 import { initSearch, type SearchItem } from "./components/Search";
 import { initHighlights, type HighlightItem } from "./components/Highlights";
+import { createToolbar, tbContent } from "./components/Toolbar";
+import { icon } from "./components/icons";
 import { initZoom, getZoom, getPan, getViewVersion, recentlyInteracted, centerOn } from "./components/Zoom";
 import type { Observer } from "./astronomy/coordinates";
 import { getMoonPosition, moonPhaseName } from "./astronomy/moon";
@@ -213,7 +215,7 @@ function computeHighlights(): HighlightItem[] {
     const parts: string[] = [];
     if (sset.set) parts.push(`Sunset ${clockStr(sset.set)}`);
     if (dark.set) parts.push(`astro-dark ${clockStr(dark.set)}`);
-    if (parts.length) items.push({ icon: "☀", text: parts.join(" · ") });
+    if (parts.length) items.push({ icon: icon("sun"), text: parts.join(" · ") });
   }
 
   if (lastMoon) {
@@ -222,16 +224,16 @@ function computeHighlights(): HighlightItem[] {
     if (lastMoon.alt >= 0 && rts.set) when = `, sets ${clockStr(rts.set)}`;
     else if (lastMoon.alt < 0 && rts.rise) when = `, rises ${clockStr(rts.rise)}`;
     const phase = moonPhaseName(lastMoon.illumination, lastMoon.waxing);
-    items.push({ icon: "☾", text: `${phase} (${Math.round(lastMoon.illumination * 100)}%)${when}` });
+    items.push({ icon: icon("moon"), text: `${phase} (${Math.round(lastMoon.illumination * 100)}%)${when}` });
   }
 
   for (const p of lastPlanets) {
     const rts = riseTransitSet(p.ra, p.dec, observer, now, STD_ALT_STAR);
     const mag = `mag ${p.magnitude.toFixed(1)}`;
     if (p.alt >= 0) {
-      items.push({ icon: "●", text: `${p.name} up now (${mag})${rts.set ? `, sets ${clockStr(rts.set)}` : ""}` });
+      items.push({ icon: icon("planet"), text: `${p.name} up now (${mag})${rts.set ? `, sets ${clockStr(rts.set)}` : ""}` });
     } else if (rts.rise) {
-      items.push({ icon: "●", text: `${p.name} rises ${clockStr(rts.rise)} (${mag})` });
+      items.push({ icon: icon("planet"), text: `${p.name} rises ${clockStr(rts.rise)} (${mag})` });
     }
   }
 
@@ -244,7 +246,7 @@ function computeHighlights(): HighlightItem[] {
     for (let j = i + 1; j < bodies.length; j++) {
       const sep = angularSeparation(bodies[i].ra, bodies[i].dec, bodies[j].ra, bodies[j].dec);
       if (sep < 5) {
-        items.push({ icon: "✧", text: `${bodies[i].name} & ${bodies[j].name} ${sep.toFixed(1)}° apart` });
+        items.push({ icon: icon("conjunction"), text: `${bodies[i].name} & ${bodies[j].name} ${sep.toFixed(1)}° apart` });
       }
     }
   }
@@ -256,7 +258,7 @@ function computeHighlights(): HighlightItem[] {
     if (passes.length) {
       const p = passes[0];
       items.push({
-        icon: "🛰",
+        icon: icon("satellite"),
         text: `ISS ${clockStr(p.start)} — peak ${p.peakElevation.toFixed(0)}°, ${dirName(p.startAz)}→${dirName(p.endAz)}`,
       });
     }
@@ -713,9 +715,8 @@ async function init() {
   setStatus(idleStatus());
   initInfoPanel();
 
-  // Manual location control — lets users pick any place on Earth and recover
-  // from a denied geolocation prompt or a stale cached fix.
-  initLocationControl({
+  // Controls that open from the toolbar / settings sheet.
+  const location = initLocationControl({
     getCurrent: () => observer,
     onChange: (loc) => {
       observer = loc;
@@ -724,60 +725,57 @@ async function init() {
       invalidatePositions(); // new location → recompute everything next frame
     },
   });
-
-  // Prominent day/night toggle. Daylight tints the sky and dims stars by the Sun's
-  // altitude; turning it off gives a dark, star-filled sky at any time of day.
-  const dayBtn = document.createElement("button");
-  dayBtn.id = "day-btn";
-  dayBtn.className = "ui-chip";
-  dayBtn.style.cssText = "position:fixed;top:64px;left:16px;z-index:200;";
-  const syncDayBtn = () => {
-    dayBtn.textContent = getLayers().daylight ? "☀ Daylight" : "☾ Night sky";
-  };
-  syncDayBtn();
-  dayBtn.addEventListener("click", () => {
-    setLayer("daylight", !getLayers().daylight);
-    syncDayBtn();
-    markDirty();
-  });
-  document.body.appendChild(dayBtn);
-
-  // Layers toggle panel (constellations, Milky Way, ecliptic, grid) + data refresh.
-  initLayersControl(markDirty, refreshData);
-
-  // Time travel — scrub to any date/time, or stay live.
-  initTimeControl(() => {
+  let timeBtn: HTMLButtonElement | undefined;
+  const time = initTimeControl(() => {
     invalidatePositions(); // new time → recompute the whole sky next frame
     markDirty();
+    timeBtn?.classList.toggle("tb-btn-active", !isLive()); // highlight when scrubbed
+  });
+  const search = initSearch(() => searchItems, selectSearchResult);
+  const tonight = initHighlights(computeHighlights);
+
+  // --- Bottom toolbar ---
+  const toolbar = createToolbar();
+  toolbar.addButton({ icon: icon("search"), label: "Search", onClick: search.open });
+  timeBtn = toolbar.addButton({ icon: icon("clock"), label: "Time", onClick: time.open });
+
+  const viewBtn = toolbar.addButton({
+    icon: icon("sky"),
+    label: "Sky",
+    onClick: () => {
+      if (!isSkyView) {
+        showPermissionPrompt(() => {
+          isSkyView = true;
+          viewBtn.innerHTML = tbContent(icon("map"), "Map");
+          markDirty();
+        });
+      } else {
+        isSkyView = false;
+        viewBtn.innerHTML = tbContent(icon("sky"), "Sky");
+        markDirty();
+      }
+    },
   });
 
-  // Search + "guide me there".
-  initSearch(() => searchItems, selectSearchResult);
+  toolbar.addButton({ icon: icon("star"), label: "Tonight", onClick: tonight.open });
+  toolbar.addButton({ icon: icon("sliders"), label: "Settings", onClick: toolbar.openSettings });
 
-  // Tonight's highlights feed.
-  initHighlights(computeHighlights);
+  // --- Settings sheet contents ---
+  buildLayersControls(toolbar.settingsBody, markDirty);
 
-  // Mode toggle button
-const modeBtn = document.createElement("button");
-modeBtn.id = "mode-btn";
-modeBtn.className = "ui-chip";
-modeBtn.textContent = "⊕ Sky View";
-modeBtn.style.cssText = "position:fixed;top:16px;right:16px;z-index:200;";
-document.body.appendChild(modeBtn);
+  const locationRow = document.createElement("button");
+  locationRow.className = "ui-chip";
+  locationRow.style.cssText = "width:100%;justify-content:center;margin-top:10px;";
+  locationRow.innerHTML = tbContent(icon("pin", 18), "Set location");
+  locationRow.addEventListener("click", location.open);
+  toolbar.settingsBody.appendChild(locationRow);
 
-modeBtn.addEventListener("click", () => {
-  if (!isSkyView) {
-    showPermissionPrompt(() => {
-      isSkyView = true;
-      modeBtn.textContent = "⊙ Map View";
-      markDirty(); // switching views changes what's drawn
-    });
-  } else {
-    isSkyView = false;
-    modeBtn.textContent = "⊕ Sky View";
-    markDirty();
-  }
-});
+  const refreshRow = document.createElement("button");
+  refreshRow.className = "ui-chip";
+  refreshRow.style.cssText = "width:100%;justify-content:center;margin-top:8px;";
+  refreshRow.innerHTML = tbContent(icon("refresh", 18), "Refresh data");
+  refreshRow.addEventListener("click", refreshData);
+  toolbar.settingsBody.appendChild(refreshRow);
 
   initZoom(canvas);
 
