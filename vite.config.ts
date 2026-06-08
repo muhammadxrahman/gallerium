@@ -7,9 +7,12 @@ export default defineConfig({
   plugins: [
     basicSsl(),
     VitePWA({
-      // Auto-register + auto-update the service worker; the plugin injects the
-      // registration script and manifest link into index.html at build time.
+      // Auto-update: a new SW skips waiting + claims clients, and the registration
+      // in main.ts reloads the page once it activates. We register the SW ourselves
+      // (injectRegister: false) so we can poll for updates — essential for iOS
+      // home-screen apps, which stay resident and otherwise never see new deploys.
       registerType: 'autoUpdate',
+      injectRegister: false,
       includeAssets: ['icon.svg'],
       manifest: {
         name: 'Gallerium',

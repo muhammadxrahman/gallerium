@@ -1,0 +1,23 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm test)",
+      "Bash(npm run build)",
+      "Bash(npm run dev)",
+      "Bash(git status)",
+      "Bash(git diff*)",
+      "Bash(git log*)",
+      "Bash(git add*)",
+      "Bash(git commit*)",
+      "Read(**/*)",
+      "Write(src/**/*)",
+      "Write(CLAUDE.md)"
+    ],
+    "deny": [
+      "Bash(npm run deploy)",
+      "Bash(git push*)",
+      "Bash(rm -rf*)",
+      "Bash(npm install*)"
+    ]
+  }
+}

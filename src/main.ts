@@ -1,4 +1,5 @@
 import "./style.css";
+import { registerSW } from "virtual:pwa-register";
 import { showPermissionPrompt, } from "./components/PermissionPrompt";
 import { getOrientation, isListening } from "./components/Orientation";
 import { initInfoPanel, updateInfoPanel } from "./components/InfoPanel";
@@ -16,6 +17,7 @@ import { getAllPlanets } from "./astronomy/planets";
 import { getVisibleSatellites } from "./astronomy/satellites";
 import { requestLocation, cachedLocation, saveLocation } from "./utils/geo";
 import { initLocationControl } from "./components/LocationControl";
+import { initZoom, getZoom, getPan, recentlyInteracted } from "./components/Zoom";
 import type { Observer } from "./astronomy/coordinates";
 import { getMoonPosition } from "./astronomy/moon";
 
@@ -38,15 +40,44 @@ function setStatus(msg: string) {
   statusEl.textContent = msg;
 }
 
+// Apply the user's zoom + pan to the map-view dome. Must be applied identically
+// when rendering and when hit-testing so taps line up with what's drawn. Sky view
+// is orientation-driven and uses only the zoom factor (FOV), so pan is not applied.
+function applyView(rc: RenderContext): void {
+  const { x, y } = getPan();
+  rc.radius *= getZoom();
+  rc.centerX += x;
+  rc.centerY += y;
+}
+
+// Register the service worker and keep it fresh. With registerType "autoUpdate",
+// finding a new SW activates it and reloads the page automatically. The catch is
+// that the browser only *checks* for a new SW on navigation — and a home-screen
+// (standalone) iOS app stays resident and rarely navigates, so it would keep
+// serving the old cached build forever. Polling for updates when the app is
+// brought to the foreground (and hourly) fixes that.
+registerSW({
+  immediate: true,
+  onRegisteredSW(_swUrl, registration) {
+    if (!registration) return;
+    const checkForUpdate = () => {
+      if (document.visibilityState === "visible") registration.update();
+    };
+    document.addEventListener("visibilitychange", checkForUpdate);
+    window.addEventListener("focus", checkForUpdate);
+    setInterval(checkForUpdate, 60 * 60 * 1000); // hourly safety net
+  },
+});
+
 function renderSkyView(
   rc: RenderContext,
   stars: RenderedStar[],
   planets: RenderedPlanet[],
   satellites: RenderedSatellite[],
   centerAz: number,
-  centerAlt: number
+  centerAlt: number,
+  FOV: number // degrees visible at once (narrower = zoomed in)
 ): void {
-  const FOV = 90; // degrees visible at once
 
   // Stars
   for (const star of stars) {
@@ -130,6 +161,7 @@ function renderFrame() {
   if (!observer) return;
 
   const rc = initCanvas(canvas);
+  const zoom = getZoom();
   clearCanvas(rc);
 
   const now = new Date();
@@ -181,10 +213,12 @@ function renderFrame() {
   lastMoon = renderedMoon;
 
   if (isSkyView && isListening()) {
+    const fov = 90 / zoom; // narrower field of view = zoomed in
     const { azimuth, altitude } = getOrientation();
-    renderSkyView(rc, rendered, renderedPlanets, renderedSats, azimuth, altitude);
-    renderMoon(rc, renderedMoon, true, azimuth, altitude, 90);
+    renderSkyView(rc, rendered, renderedPlanets, renderedSats, azimuth, altitude, fov);
+    renderMoon(rc, renderedMoon, true, azimuth, altitude, fov);
   } else {
+    applyView(rc); // zoom + pan the dome
     renderStars(rc, rendered);
     renderPlanets(rc, renderedPlanets);
     renderSatellites(rc, renderedSats);
@@ -280,15 +314,21 @@ modeBtn.addEventListener("click", () => {
   }
 });
 
+  initZoom(canvas);
+
 canvas.addEventListener("click", (e) => {
+  if (recentlyInteracted()) return; // ignore the click that ends a drag
   const rc = initCanvas(canvas);
+  applyView(rc); // match the zoomed/panned render so hits line up
   handleClick(e, rc, lastStars, lastPlanets, lastSatellites, lastMoon);
   updateInfoPanel();
 });
 
 canvas.addEventListener("touchend", (e) => {
   e.preventDefault();
+  if (recentlyInteracted()) return; // the pointer-up ending a pan/pinch isn't a tap
   const rc = initCanvas(canvas);
+  applyView(rc);
   handleClick(e, rc, lastStars, lastPlanets, lastSatellites, lastMoon);
   updateInfoPanel();
 });

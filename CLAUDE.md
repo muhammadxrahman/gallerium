@@ -33,12 +33,15 @@ src/
 │   ├── canvas.ts         # RenderContext, altAzToXY, altAzToXYPointed, renderCompass
 │   ├── stars.ts          # Star dots with B-V color index + magnitude sizing
 │   ├── planets.ts        # Planet dots with glow + labels
-│   └── satellites.ts     # Satellite dots, ISS highlighted
+│   ├── satellites.ts     # Satellite dots, ISS highlighted
+│   └── moon.ts           # Moon disc with phase terminator + glow
 ├── components/       # DOM, device APIs, user interaction
-│   ├── InfoPanel.ts      # Tap-to-identify overlay
+│   ├── InfoPanel.ts      # Tap-to-identify overlay (stars, planets, Moon, satellites)
 │   ├── HitDetection.ts   # Click/touch → nearest object
-│   ├── Orientation.ts    # DeviceOrientationEvent → azimuth/altitude
-│   └── PermissionPrompt.ts # iOS orientation permission flow
+│   ├── Orientation.ts    # DeviceOrientationEvent → azimuth/altitude (iOS webkitCompassHeading)
+│   ├── PermissionPrompt.ts # iOS orientation permission flow
+│   ├── LocationControl.ts  # Manual lat/long entry + GPS re-request
+│   └── Zoom.ts           # Pinch + wheel zoom factor (shared by both views)
 ├── store/
 │   └── state.ts          # Shared selected object state
 ├── utils/
@@ -81,6 +84,19 @@ Cache failures are caught and logged as warnings — they never block data loadi
 **Offline is two layers.** The service worker (vite-plugin-pwa/Workbox) precaches the
 app *shell* (JS/CSS/HTML/icon) so the page loads with no network. IndexedDB caches the
 *data* (stars/TLEs). They are independent — never route catalog/TLE fetches through the SW.
+
+**SW updates: registered manually in main.ts** (`injectRegister: false`) with
+`registerType: 'autoUpdate'`. We poll `registration.update()` on `visibilitychange`/
+`focus` and hourly. This is required for iOS home-screen (standalone) apps: they stay
+resident and rarely navigate, so the default register-only flow never sees new deploys.
+On finding a new SW, autoUpdate activates it and reloads the page.
+
+**Zoom + pan** live in components/Zoom.ts (wheel, mouse-drag, pinch, 1-finger drag;
+double-click/tap resets). Zoom is anchored at the cursor/pinch point so any region can be
+brought into focus. Map view applies both via `applyView(rc)` in main.ts (`rc.radius *=
+zoom; rc.center += pan`); sky view is orientation-driven and uses only the zoom factor
+(`FOV = 90 / zoom`). Hit detection MUST call the same `applyView(rc)` so taps line up, and
+skip selection when `recentlyInteracted()` (the pointer-up that ends a drag isn't a tap).
 
 **Startup degrades gracefully.** `init()` loads stars and TLEs independently
 (`.catch(() => [])`); a failed fetch never aborts startup. Planets, Moon, and the compass
