@@ -201,116 +201,65 @@ are pure math and must always render, even fully offline with no cached data.
 
 ## Roadmap & Backlog
 
-A running, prioritized backlog toward a standout astronomy app: **beautiful · accurate ·
-real-world useful**. Tiers: **P0** = next up, **P1** = soon, **P2** = later. Check items
-off (`[x]`) and move notable ones to "Shipped" as they land. Keep this list honest — it is
-the single source of truth for what's left.
+The engine is built and tested — the work now is **proving it, packaging it, and hardening
+the codebase**. Tiers: **P0** = next up, **P1** = soon, **P2** = later. Check items off
+(`[x]`) and fold notable work into "Shipped". Keep this honest — it's the single source of
+truth for what's left.
 
 ### Shipped
-- [x] Real Sun (computed, not the bogus HYG "Sol" row) — disc, glow, identify
-- [x] Performance: throttled compute + draw-on-change loop; no per-frame canvas realloc
-- [x] Zoom + pan (wheel/drag/pinch), cursor-anchored
-- [x] Topocentric satellites (true look angles, not geocentric — was ~70° off)
-- [x] Kepler solver unit fix (planets were up to ~8° off)
-- [x] Moon phase name + correct terminator side (waxing/waning)
-- [x] Offline PWA shell + IndexedDB data + iOS update polling
-- [x] Manual location entry / GPS re-request; graceful offline degradation
-- [x] iOS compass heading via `webkitCompassHeading`
-- [x] Tests for the hot paths: projection (`altAzToXY`/`altAzToXYPointed`), hit detection
-  (`pickObject`), TLE parser edge cases — found no regressions
-- [x] Visual overhaul: day/night sky gradient + twilight + horizon glow (with a prominent
-  Daylight toggle; stars floored so they never vanish), constellation lines + names,
-  Milky Way band, ecliptic + equatorial grid (toggleable), label decluttering, on-canvas
-  selection ring, richer star rendering, modern frosted-glass UI chrome, SVG favicon
-- [x] Sophistication pass: planet glyphs (Saturn rings, Jupiter belts, shaded spheres),
-  bright-star diffraction spikes, dome vignette + glassy rim, meridian line, elegant
-  loading overlay + canvas fade-in, redesigned info card, star-density (limiting-mag) slider
-- [x] Foundation P1: gnomonic AR projection, unified render path (one body path, two
-  projectors), resilient data loading (`fetchWithFallback` + mirrors + refresh + staleness), CI
-- [x] Accurate section (all): device pose model, atmospheric refraction, planet magnitudes +
-  phase, satellite sunlit/visibility, lunar parallax, precession, sky-view hit detection
-- [x] Real-world P0/P1: time travel (clock + loop reads `getSkyTime()`), search + guide-me-there
-  (map centering / AR arrow), rise/set/twilight in the info card, ISS pass prediction,
-  "Tonight" highlights feed; fixed quoted-empty HYG names polluting search
-- [x] UI consolidation: scattered chips → one bottom toolbar + settings sheet; replaced all
-  emoji with an SVG line-icon set (`icons.ts`); status/info-panel repositioned clear of it
-- [x] Design-system pass: radius tokens + shared `--ease`; unified fade+slide entrance for
-  every panel/overlay (`.show` classes, not display toggles); dome outer glow + letter-spaced,
-  instrument-style compass labels with tick marks
+- **Astronomy engine** — HYG stars; Sun/Moon/5 planets (Meeus + Kepler); SGP4 satellites.
+  All *apparent/topocentric*: refraction, precession, lunar parallax, planet magnitudes +
+  phase, satellite sunlit-visibility. Rise/set/transit/twilight + pass prediction.
+  Cross-checked vs Stellarium / JPL Horizons.
+- **Rendering** — Canvas-2D map dome + gnomonic AR view (one shared body path, two
+  projectors); day/night sky, constellations + names, Milky Way, ecliptic/grid/meridian,
+  planet glyphs (Saturn rings), diffraction spikes, label declutter, vignette/glow.
+  Throttled draw-on-change loop.
+- **Features** — time travel (scrub any date/time), search + "guide me there" (map center /
+  AR arrow), Tonight highlights feed, tap-to-identify info card with rise/set, zoom/pan.
+- **Platform** — offline-first PWA (service worker + IndexedDB), resilient data loading
+  (mirror fallback / retry / refresh / staleness), device pose model, geolocation + manual
+  location.
+- **UI / design** — consolidated bottom toolbar + settings sheet, SVG icon set (no emoji),
+  design tokens + unified panel motion, loading overlay.
+- **Engineering** — TDD across astronomy/utils (95 tests), CI (test + build on push).
 
-### Beautiful (visual fidelity & UX)
-- [x] **P0** Day/night sky gradient + twilight + horizon glow (Sun-altitude driven), with a
-  prominent Daylight on/off toggle and a star-brightness floor so stars never fully vanish.
-- [x] **P0** Constellation lines + names (d3-celestial dataset → `data/constellations.json`).
-- [x] **P1** Ground reference (AR horizon + ground); toggleable ecliptic + equatorial grid.
-  (Meridian line still TODO — small add.)
-- [x] **P1** Label decluttering via the shared `render/labels.ts` registry.
-- [x] **P1** On-canvas selection ring (`renderSelection` in main.ts).
-- [x] **P1** Milky Way band (`render/milkyway.ts`, galactic-plane samples).
-- [x] Modern frosted-glass UI chrome (`.ui-chip` / `.ui-panel`), SVG favicon.
-- [x] **P2** Iconic planet glyphs: shaded spheres with Saturn's rings + Jupiter's belts
-  (`drawPlanetBody`, shared map/AR); bright-star diffraction spikes; dome vignette + rim.
-- [x] **P2** Elegant loading overlay (wordmark + spinner, canvas fade-in); meridian line.
-- [x] **P2** Light-pollution / limiting-magnitude slider (Layers → "Star density").
-- [x] **P2** Redesigned info card (per-type accent, frosted, animated in).
-- [ ] **P2** Remaining: subtle twinkle (skipped — would force continuous redraw, hurting
-  battery), Moon earthshine/libration, smooth map↔sky transition, first-run onboarding tour.
+### A. Package it (P0 — credibility)
+- [x] **Live on GitHub Pages** (`muhammadxrahman.github.io/gallerium/`), installed to the
+  iPhone home screen and used in the real environment — the engine runs end-to-end.
+- [ ] **README**: live link + demo GIF/video, problem narrative (SGP4 topocentric, gnomonic
+  projection, offline PWA, day/night), architecture diagram, accuracy claims. This is the
+  missing "front door" — biggest remaining packaging gap.
+- [ ] **On-device validation note**: write down what's confirmed working on real hardware —
+  especially whether the **AR azimuth actually lines up with the sky** (the one piece still
+  flagged untested) — and fix/tune if it doesn't.
 
-### Accurate (physical correctness)
-- [x] **P0** Device pose model (`components/pose.ts`): device→world rotation matrix →
-  back-camera direction. Altitude = asin(−cos β·cos γ) now reaches the zenith and accounts
-  for roll (the old `90−|β|` could not). Unit-tested. (Azimuth still uses the compass /
-  matrix; on-device azimuth tuning is a follow-up since it can't be verified off-hardware.)
-- [x] **P1** Atmospheric refraction (`astronomy/refraction.ts`, Bennett) — applied to every
-  body's altitude in the pipeline (`toApparentHorizontal`). Tested.
-- [x] **P1** Planet apparent magnitudes + illuminated fraction (`MAG_COEFF`, phase angle);
-  planets sized by magnitude in render; magnitude + phase shown in the info card. Tested.
-- [x] **P1** Satellite visibility: `isSatelliteSunlit` (cylindrical shadow) + observer-dark
-  gate (Sun < −6°). Only genuinely visible sunlit passes are shown. Tested.
-- [x] **P2** Lunar topocentric parallax (`astronomy/parallax.ts`) using Moon distance from
-  `moon.ts`; precession J2000→date (`astronomy/precession.ts`) applied to the catalog once
-  per load. Both tested. Nutation/aberration intentionally omitted (<0.01°, far below the
-  visual/pixel tolerance — adding them would be false precision).
-- [x] **P2** Hit detection works in sky view: `pickObject` takes an `AltAzProjector`, and
-  taps use the active view's projector (map dome or AR). Selection ring shows in both.
+### B. Code health & confidence (P0/P1)
+- [ ] **Refactor `main.ts` (~800 lines)** → `SkyEngine` (compute/loop) + `Controls`
+  coordinator + `Guide`/search module. The astronomy layer is well-factored; orchestration
+  is a god object and is untested.
+- [ ] **Broaden tests beyond astronomy**: orchestration, data/cache layer, search/guide
+  logic, key DOM components. (Current 95 tests are almost all pure astronomy math.)
+- [ ] **Ground-truth accuracy suite**: a JPL Horizons table across many dates with
+  arcminute tolerances — turns "should be accurate" into proof.
 
-### Real-world applicable (astronomy utility)
-- [x] **P0** Time travel (`utils/clock.ts` + `TimeControl`): the whole render loop reads
-  `getSkyTime()`, so scrubbing to any date/time (or stepping ±h/±d) shows the sky then.
-- [x] **P0** Search + "guide me there" (`Search` + index in main): find a star/planet/
-  constellation → map centers on it (`centerOn`), AR shows a guidance arrow; selection
-  stays live as the sky moves. (Fixed: unnamed HYG stars no longer pollute results.)
-- [x] **P1** Rise/set/transit + twilight (`astronomy/riseset.ts`, tested) — shown in the
-  info card and used by the highlights feed.
-- [x] **P1** ISS & satellite pass predictions (`astronomy/passes.ts`, tested) — visible
-  (sunlit + dark) passes with peak elevation and rise→set bearing.
-- [x] **P1** Tonight's highlights feed (`Highlights`): sunset/astro-dark, Moon phase +
-  rise/set, visible planets, close pairings (<5°), next ISS pass.
-- [ ] **P2** Deep-sky objects (Messier/Caldwell) with positions + info.
-- [ ] **P2** Observing list / favorites; shareable location+time+view URL.
-- [ ] **P2** Settings: coordinate display (alt/az vs RA/dec), magnitude limit, units, i18n.
+### C. Content depth (P1)
+- [ ] Deep-sky objects (Messier / Caldwell) with positions + info.
+- [ ] Outer planets (Uranus / Neptune); optionally comets / bright asteroids.
+- [ ] Observing list / favorites; shareable location+time+view URL; coordinate-display
+  setting (alt-az vs RA/dec).
 
-### Foundation (robustness, code health, ops)
-- [x] **P0** Test the untested hot paths: projection (`altAzToXY` / `altAzToXYPointed`),
-  hit detection (`pickObject`), TLE parser. Done — projection tests assert only
-  model-agnostic invariants so they survive the gnomonic upgrade below.
-- [x] **P1** `altAzToXYPointed` is now a true gnomonic (pinhole-camera) projection —
-  off-axis offset scales as tan(angle)·focal, correct everywhere incl. the zenith. Tested.
-- [x] **P1** Unified render paths: every body renderer takes an `AltAzProjector`; `draw()`
-  has one shared body path and map vs AR differ only in the two projector closures.
-- [x] **P1** Data robustness: `fetchWithFallback` (mirrors + retry + abort timeout, tested),
-  HYG via GitHub-raw + jsDelivr mirror, CelesTrak .org/.com fallback, manual "Refresh data"
-  (Layers panel), stale-satellite warning (`getTleMeta`), fetch errors surfaced in status.
-- [x] **P1** CI: `.github/workflows/ci.yml` runs `npm ci` → `npm run test:run` → `npm run
-  build` (typecheck + build) on push/PR.
-- [ ] **P2** Layered canvases (static star layer @ ~1 fps + dynamic satellite layer) if
-  profiling shows the full-scene redraw at the satellite cadence matters.
-- [ ] **P2** Smaller first load: ship a pre-trimmed mag ≤ 6.5 star JSON instead of fetching
-  the full HYG CSV; progressive load.
-- [ ] **P2** PWA polish: PNG icons (broader install support) + manifest screenshots /
-  categories; Lighthouse PWA pass.
-- [ ] **P2** Accessibility: colorblind-safe star colors, contrast, larger-text mode, ARIA
-  labels on controls.
+### D. Reach & polish (P2)
+- [ ] Accessibility (keyboard nav, ARIA labels, color-blind-safe colors, larger-text mode)
+  + i18n.
+- [ ] Real-device performance profiling; layered canvases (static stars @ ~1 fps + dynamic
+  satellite layer) if the full-scene redraw at sat cadence bites; smaller first load
+  (pre-trimmed mag ≤ 6.5 star JSON / progressive).
+- [ ] PWA polish: PNG icons (broader install support) + manifest screenshots / categories;
+  Lighthouse pass.
+- [ ] Visual leftovers: Moon earthshine/libration, smooth map↔sky crossfade, first-run
+  onboarding tour. (Star twinkle deliberately deferred — continuous redraw would break the
+  battery model.)
 
 ---
 
