@@ -12,7 +12,7 @@ in real time from the user's location. No backend, no API keys, no hosting costs
 - **Tests**: Vitest
 - **Rendering**: Canvas 2D (no Three.js, no WebGL)
 - **Offline/PWA**: vite-plugin-pwa (Workbox) — generates the service worker at build
-- **Deployment**: GitHub Pages via gh-pages
+- **Deployment**: GitHub Pages via GitHub Actions (auto-deploy on push to `main`)
 
 ---
 
@@ -300,10 +300,11 @@ Build:
 npm run build
 ```
 
-Deploy to GitHub Pages:
-```bash
-npm run deploy
-```
+Deploy to GitHub Pages: **automatic** — pushing to `main` runs CI (`.github/workflows/ci.yml`),
+and if tests + build pass, the `deploy` job publishes `dist/` to Pages via the official
+`actions/deploy-pages` flow. No manual step. To redeploy without a code change, run the
+workflow by hand from the repo's **Actions** tab (it has a `workflow_dispatch` trigger).
+Pages **Source** must be set to "GitHub Actions" in repo Settings.
 
 Dev server (HTTPS for iOS orientation API):
 ```bash
