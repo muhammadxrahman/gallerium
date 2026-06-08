@@ -75,6 +75,18 @@ export function updateInfoPanel(): void {
     Azimuth: ${p.az.toFixed(1)}°
   </div>
     `;
+  } else if (obj.type === "sun") {
+    const s = obj.data;
+    panel.innerHTML = `
+  <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+    <span style="font-size:10px;padding:2px 7px;border-radius:20px;background:rgba(255,255,255,0.15);color:rgba(255,255,255,0.7);letter-spacing:0.5px">SUN</span>
+    <div style="font-size:15px;font-weight:bold">Sun</div>
+  </div>
+  <div style="color:rgba(255,255,255,0.6);line-height:1.8">
+    Altitude: ${s.alt.toFixed(1)}°<br>
+    Azimuth: ${s.az.toFixed(1)}°
+  </div>
+    `;
   } else if (obj.type === "moon") {
     const m = obj.data;
     panel.innerHTML = `

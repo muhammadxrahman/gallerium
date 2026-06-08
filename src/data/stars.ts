@@ -16,7 +16,7 @@ const CACHE_AGE_MS = 7 * 24 * 60 * 60 * 1000; // 1 week
 // Only load stars visible to naked eye + a bit more
 const MAX_MAGNITUDE = 6.5;
 
-function parseCSV(raw: string): Star[] {
+export function parseCSV(raw: string): Star[] {
   const lines = raw.split("\n");
   const headers = lines[0].split(",").map(h => h.replace(/"/g, "").trim());
 
@@ -35,6 +35,12 @@ function parseCSV(raw: string): Star[] {
     const cols = lines[i].split(",");
     if (cols.length < 5) continue;
 
+    // HYG row id 0 is the Sun ("Sol") sitting at RA/Dec 0,0 with mag -26.7. It is
+    // NOT a fixed star — the real Sun is computed in astronomy/sun.ts — so skip it,
+    // otherwise it renders as a giant bright dot stuck at the vernal equinox point.
+    const id = parseInt(cols[idx.id]);
+    if (id === 0) continue;
+
     const mag = parseFloat(cols[idx.mag]);
     if (isNaN(mag) || mag > MAX_MAGNITUDE) continue;
 
@@ -46,7 +52,7 @@ function parseCSV(raw: string): Star[] {
     if (isNaN(ra) || isNaN(dec)) continue;
 
     stars.push({
-      id: parseInt(cols[idx.id]),
+      id,
       ra,
       dec,
       magnitude: mag,

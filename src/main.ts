@@ -9,6 +9,7 @@ import { renderStars, type RenderedStar } from "./render/stars";
 import { renderPlanets, type RenderedPlanet } from "./render/planets";
 import { renderSatellites, type RenderedSatellite } from "./render/satellites";
 import { renderMoon, type RenderedMoon } from "./render/moon";
+import { renderSun, type RenderedSun } from "./render/sun";
 import { loadStars } from "./data/stars";
 import { loadTLEs } from "./data/tles";
 import { equatorialToHorizontal } from "./astronomy/coordinates";
@@ -20,6 +21,7 @@ import { initLocationControl } from "./components/LocationControl";
 import { initZoom, getZoom, getPan, recentlyInteracted } from "./components/Zoom";
 import type { Observer } from "./astronomy/coordinates";
 import { getMoonPosition } from "./astronomy/moon";
+import { getSunPosition } from "./astronomy/sun";
 
 // --- State ---
 let observer: Observer | null = cachedLocation();
@@ -27,6 +29,7 @@ let lastStars: RenderedStar[] = [];
 let lastPlanets: RenderedPlanet[] = [];
 let lastSatellites: RenderedSatellite[] = [];
 let lastMoon: RenderedMoon | null = null;
+let lastSun: RenderedSun | null = null;
 let isSkyView = false;
 
 const canvas = document.getElementById("sky-canvas") as HTMLCanvasElement;
@@ -197,6 +200,15 @@ function renderFrame() {
   );
   const renderedMoon: RenderedMoon = { ...moonPos, az: moonAz, alt: moonAlt };
 
+  // Sun
+  const sunPos = getSunPosition(now);
+  const { az: sunAz, alt: sunAlt } = equatorialToHorizontal(
+    { ra: sunPos.ra, dec: sunPos.dec },
+    observer!,
+    lst
+  );
+  const renderedSun: RenderedSun = { ...sunPos, az: sunAz, alt: sunAlt };
+
   // Satellites — use topocentric look angles computed against the observer.
   // Satellites are near-field, so the geocentric RA/Dec → horizontal path used
   // for stars/planets would be wildly off; getVisibleSatellites gives true az/alt.
@@ -211,18 +223,21 @@ function renderFrame() {
   lastPlanets = renderedPlanets;
   lastSatellites = renderedSats;
   lastMoon = renderedMoon;
+  lastSun = renderedSun;
 
   if (isSkyView && isListening()) {
     const fov = 90 / zoom; // narrower field of view = zoomed in
     const { azimuth, altitude } = getOrientation();
     renderSkyView(rc, rendered, renderedPlanets, renderedSats, azimuth, altitude, fov);
     renderMoon(rc, renderedMoon, true, azimuth, altitude, fov);
+    renderSun(rc, renderedSun, true, azimuth, altitude, fov);
   } else {
     applyView(rc); // zoom + pan the dome
     renderStars(rc, rendered);
     renderPlanets(rc, renderedPlanets);
     renderSatellites(rc, renderedSats);
     renderMoon(rc, renderedMoon, false);
+    renderSun(rc, renderedSun, false);
     renderCompass(rc);
   }
 
@@ -320,7 +335,7 @@ canvas.addEventListener("click", (e) => {
   if (recentlyInteracted()) return; // ignore the click that ends a drag
   const rc = initCanvas(canvas);
   applyView(rc); // match the zoomed/panned render so hits line up
-  handleClick(e, rc, lastStars, lastPlanets, lastSatellites, lastMoon);
+  handleClick(e, rc, lastStars, lastPlanets, lastSatellites, lastMoon, lastSun);
   updateInfoPanel();
 });
 
@@ -329,7 +344,7 @@ canvas.addEventListener("touchend", (e) => {
   if (recentlyInteracted()) return; // the pointer-up ending a pan/pinch isn't a tap
   const rc = initCanvas(canvas);
   applyView(rc);
-  handleClick(e, rc, lastStars, lastPlanets, lastSatellites, lastMoon);
+  handleClick(e, rc, lastStars, lastPlanets, lastSatellites, lastMoon, lastSun);
   updateInfoPanel();
 });
   renderFrame();

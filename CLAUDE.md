@@ -25,6 +25,7 @@ src/
 │   ├── sidereal.ts       # GMST, LST from system clock
 │   ├── planets.ts        # Keplerian orbital mechanics for 5 planets (VSOP87-lite)
 │   ├── moon.ts           # Meeus lunar theory (~2° accuracy)
+│   ├── sun.ts            # Meeus low-precision solar position (~0.01°)
 │   └── satellites.ts     # SGP4 propagation via satellite.js@4.1.4
 ├── data/             # Data loading with IndexedDB caching
 │   ├── stars.ts          # HYG v4.1 catalog loader + CSV parser
@@ -34,7 +35,8 @@ src/
 │   ├── stars.ts          # Star dots with B-V color index + magnitude sizing
 │   ├── planets.ts        # Planet dots with glow + labels
 │   ├── satellites.ts     # Satellite dots, ISS highlighted
-│   └── moon.ts           # Moon disc with phase terminator + glow
+│   ├── moon.ts           # Moon disc with phase terminator + glow
+│   └── sun.ts            # Sun disc + glow (largest, brightest object)
 ├── components/       # DOM, device APIs, user interaction
 │   ├── InfoPanel.ts      # Tap-to-identify overlay (stars, planets, Moon, satellites)
 │   ├── HitDetection.ts   # Click/touch → nearest object
@@ -118,7 +120,6 @@ are pure math and must always render, even fully offline with no cached data.
 ## What's Not Here Yet
 
 - Constellation lines (NGC constellation line dataset, free)
-- The Sun (similar to planet math, needs solar longitude formula)
 - Hit detection in sky view mode (currently only works in map view)
 - Loading spinner (currently just a status text string)
 - Proper HTTPS for production (currently uses self-signed cert for local dev)
@@ -164,6 +165,10 @@ npm run dev
 | Satellites | CelesTrak visual group | Cached 24 hours |
 | Planets | Computed (no fetch) | Real-time |
 | Moon | Computed (no fetch) | Real-time |
+| Sun | Computed (no fetch) | Real-time |
+
+Note: HYG row id 0 is the Sun ("Sol") at RA/Dec 0,0 — `parseCSV` skips it; the real
+Sun is computed in `astronomy/sun.ts`.
 
 ---
 
