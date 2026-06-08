@@ -149,15 +149,18 @@ app *shell* (JS/CSS/HTML/icon) so the page loads with no network. IndexedDB cach
 resident and rarely navigate, so the default register-only flow never sees new deploys.
 On finding a new SW, autoUpdate activates it and reloads the page.
 
-**Render loop = throttled compute + draw-on-change** (main.ts). Computing alt/az for
-~9k stars is the expensive part and depends only on (time, observer), not on
-orientation/zoom/pan. So `computeBodies` runs on a cadence (1 s; stars/planets/Moon/Sun
-are slow) and `computeSatellites` faster (250 ms; ISS moves ~1°/s) — each computation is
-still exact for its timestamp, no precision loss. `draw()` runs only when a `needsRedraw`
-flag is set: a compute tick, a zoom/pan change (polled via `getViewVersion()`), an
-orientation move (epsilon-gated), a selection, a view toggle, or a resize. An idle map
-view sits near 1 fps instead of 60. To force a recompute (e.g. location change) call
-`invalidatePositions()`; to force a redraw call `markDirty()`.
+**Render loop = throttled compute + draw-on-change.** Computing alt/az for ~9k stars is
+the expensive part and depends only on (time, observer), not on orientation/zoom/pan. So
+`computeBodies` runs on a cadence (1 s; stars/planets/Moon/Sun are slow) and
+`computeSatellites` faster (250 ms; ISS moves ~1°/s) — each computation is still exact for
+its timestamp, no precision loss. The *decision* logic (when to recompute, when to draw)
+is the pure `engine/scheduler.ts` state machine, unit-tested; the `loop()` in main.ts just
+performs the side effects it returns. `draw()` runs only when `tick()` reports a redraw: a
+compute tick, a zoom/pan change (polled via `getViewVersion()`), an orientation move
+(epsilon-gated; first sample always fires), a selection, a view toggle, or a resize. An
+idle map view sits near 1 fps instead of 60. To force a recompute (e.g. location change)
+call `invalidatePositions()`; to force a redraw call `markDirty()` (both delegate to the
+scheduler).
 
 **initCanvas only reallocates on size change.** Assigning `canvas.width/height`
 reallocates+clears the backing store, so it's guarded behind a size check; the DPR scale
@@ -222,7 +225,9 @@ truth for what's left.
   location.
 - **UI / design** — consolidated bottom toolbar + settings sheet, SVG icon set (no emoji),
   design tokens + unified panel motion, loading overlay.
-- **Engineering** — TDD across astronomy/utils (95 tests), CI (test + build on push).
+- **Engineering** — TDD across astronomy/utils + engine orchestration (146 tests), CI
+  (test + build on push). `main.ts` refactored into a tested `engine/` (SkyEngine + pure
+  compute/search/highlights/scheduler/status modules) with a thin DOM coordinator.
 
 ### A. Package it (P0 — credibility)
 - [x] **Live on GitHub Pages** (`muhammadxrahman.github.io/gallerium/`), installed to the
@@ -235,11 +240,16 @@ truth for what's left.
   flagged untested) — and fix/tune if it doesn't.
 
 ### B. Code health & confidence (P0/P1)
-- [ ] **Refactor `main.ts` (~800 lines)** → `SkyEngine` (compute/loop) + `Controls`
-  coordinator + `Guide`/search module. The astronomy layer is well-factored; orchestration
-  is a god object and is untested.
-- [ ] **Broaden tests beyond astronomy**: orchestration, data/cache layer, search/guide
-  logic, key DOM components. (Current 95 tests are almost all pure astronomy math.)
+- [x] **Refactor `main.ts`** → `engine/`: `SkyEngine` (astronomy state + compute) composing
+  pure `compute`/`search`/`highlights`/`scheduler`/`status` modules. `main.ts` is now a thin
+  DOM coordinator (~480 lines) — toolbar wiring, projectors, draw, tap handling — that
+  delegates all decisions to the tested engine.
+- [x] **Broaden tests beyond astronomy**: engine orchestration (`SkyEngine`), the render-loop
+  scheduler (cadence + draw-on-change), idle-status logic, and search/guide target resolution
+  are all covered (146 tests). Caught a latent bug: the AR orientation redraw gate started
+  at `NaN`, so `|x − NaN| > ε` was always false and it never fired — now first-sample-aware.
+- [ ] **Still thin on coverage**: data/cache layer (IndexedDB), and the DOM-bound bits of
+  `main.ts` (draw, tap → hit-test wiring) remain untested.
 - [ ] **Ground-truth accuracy suite**: a JPL Horizons table across many dates with
   arcminute tolerances — turns "should be accurate" into proof.
 
@@ -265,10 +275,12 @@ truth for what's left.
 
 ## Testing Approach
 
-TDD with Vitest (93 tests). Every astronomy module has a test file, plus the render
+TDD with Vitest (146 tests). Every astronomy module has a test file, plus the render
 projection (`render/canvas.test.ts`), hit detection (`components/HitDetection.test.ts`),
-the star/TLE parsers, and `utils/fetchWithFallback.test.ts` (mirror fallback/retry, mocked
-`fetch`). Ground truth for astronomy is cross-checked against Stellarium Web or JPL
+the star/TLE parsers, `utils/fetchWithFallback.test.ts` (mirror fallback/retry, mocked
+`fetch`), and the orchestration engine: `SkyEngine` (load→locate→compute lifecycle),
+`compute`/`search`/`highlights`, the render-loop `scheduler` (cadence + draw-on-change
+state machine), and `status` (idle/offline/stale-data text). Ground truth for astronomy is cross-checked against Stellarium Web or JPL
 Horizons. Astronomy position tests use wide tolerances (±5°) — this is a visual app, not a
 navigation system ("places X in the correct region of the sky"). Pure geometry is tested
 exactly: model-agnostic invariants (zenith→center, cardinal directions, culling, up/down &

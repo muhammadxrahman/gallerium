@@ -40,6 +40,8 @@ import { initZoom, getZoom, getPan, getViewVersion, recentlyInteracted, centerOn
 import { state } from "./store/state";
 import { SkyEngine } from "./engine/SkyEngine";
 import { targetAltAz, targetLabel, targetSelection, type TargetMeta } from "./engine/search";
+import { createScheduler, tick, markDirty as schedMarkDirty, invalidate as schedInvalidate } from "./engine/scheduler";
+import { idleStatus as computeIdleStatus } from "./engine/status";
 
 // Static reference geometry, computed once.
 const ECLIPTIC = eclipticPath(2);
@@ -96,38 +98,22 @@ registerSW({
 });
 
 // --- Render loop state ---
-const BODIES_INTERVAL_MS = 1000; // stars, planets, Moon, Sun — slow movers
-const SAT_INTERVAL_MS = 250; // satellites move fast (ISS up to ~1°/s)
-
-let lastBodiesAt = -Infinity;
-let lastSatAt = -Infinity;
-let needsRedraw = true;
-let lastViewVersion = -1;
-let lastOriAz = NaN;
-let lastOriAlt = NaN;
+// The cadence + draw-on-change decisions live in the pure scheduler (engine/scheduler.ts);
+// this module just performs the side effects it asks for (recompute, draw).
+const sched = createScheduler();
 
 function markDirty(): void {
-  needsRedraw = true;
+  schedMarkDirty(sched);
 }
 
 // Force an immediate recompute next frame (e.g. after a location/time change).
 function invalidatePositions(): void {
-  lastBodiesAt = -Infinity;
-  lastSatAt = -Infinity;
-  needsRedraw = true;
+  schedInvalidate(sched);
 }
 
 // Persistent status when idle: offline-degraded, stale-satellite warning, or clear.
 function idleStatus(): string {
-  if (!engine.hasStars() && !engine.hasTles()) {
-    return "Offline: showing planets & Moon only.";
-  }
-  const meta = getTleMeta();
-  if (meta.fromCache && meta.ageMs !== null) {
-    const days = meta.ageMs / 86_400_000;
-    if (days >= 3) return `Satellite data ${Math.round(days)} days old — Layers ▸ Refresh`;
-  }
-  return "";
+  return computeIdleStatus(engine.hasStars(), engine.hasTles(), getTleMeta());
 }
 
 // Manual data refresh: re-fetch catalog + TLEs, bypassing cache. Each is independent.
@@ -350,35 +336,17 @@ function loop(t: number): void {
   if (engine.observer) {
     const now = getSkyTime(); // live wall clock, or the user's scrubbed time
 
-    if (t - lastBodiesAt >= BODIES_INTERVAL_MS) {
-      engine.recomputeBodies(now);
-      lastBodiesAt = t;
-      needsRedraw = true;
-    }
-    if (engine.hasTles() && t - lastSatAt >= SAT_INTERVAL_MS) {
-      engine.recomputeSatellites(now);
-      lastSatAt = t;
-      needsRedraw = true;
-    }
+    const r = tick(sched, {
+      t,
+      hasTles: engine.hasTles(),
+      viewVersion: getViewVersion(),
+      orientation: isSkyView && isListening() ? getOrientation() : null,
+    });
 
-    const vv = getViewVersion();
-    if (vv !== lastViewVersion) {
-      lastViewVersion = vv;
-      needsRedraw = true;
-    }
-
-    if (isSkyView && isListening()) {
-      const o = getOrientation();
-      if (Math.abs(o.azimuth - lastOriAz) > 0.05 || Math.abs(o.altitude - lastOriAlt) > 0.05) {
-        lastOriAz = o.azimuth;
-        lastOriAlt = o.altitude;
-        needsRedraw = true;
-      }
-    }
-
-    if (needsRedraw) {
+    if (r.recomputeBodies) engine.recomputeBodies(now);
+    if (r.recomputeSatellites) engine.recomputeSatellites(now);
+    if (r.redraw) {
       draw();
-      needsRedraw = false;
       revealOnce();
     }
   }
