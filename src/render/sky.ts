@@ -96,6 +96,32 @@ export function renderSkyDome(rc: RenderContext, sunAlt: number, sunAz: number):
     rc.ctx.fillRect(0, 0, rc.width, rc.height);
     rc.ctx.restore();
   }
+
+  // Depth: a soft vignette toward the dome edge.
+  const vig = rc.ctx.createRadialGradient(
+    rc.centerX,
+    rc.centerY,
+    rc.radius * 0.55,
+    rc.centerX,
+    rc.centerY,
+    rc.radius
+  );
+  vig.addColorStop(0, "transparent");
+  vig.addColorStop(1, "rgba(0,0,5,0.38)");
+  rc.ctx.save();
+  rc.ctx.beginPath();
+  rc.ctx.arc(rc.centerX, rc.centerY, rc.radius, 0, Math.PI * 2);
+  rc.ctx.clip();
+  rc.ctx.fillStyle = vig;
+  rc.ctx.fillRect(0, 0, rc.width, rc.height);
+  rc.ctx.restore();
+
+  // A thin glassy rim where the dome meets the horizon.
+  rc.ctx.strokeStyle = "rgba(170,195,255,0.22)";
+  rc.ctx.lineWidth = 1.5;
+  rc.ctx.beginPath();
+  rc.ctx.arc(rc.centerX, rc.centerY, rc.radius, 0, Math.PI * 2);
+  rc.ctx.stroke();
 }
 
 // Sky (AR) view: vertical gradient + a ground band below the straight-ahead horizon.

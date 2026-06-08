@@ -1,4 +1,4 @@
-import type { EqProjector } from "./canvas";
+import type { EqProjector, AltAzProjector } from "./canvas";
 
 // Draw an RA/Dec polyline, breaking the stroke wherever a vertex doesn't project.
 function strokePath(
@@ -37,6 +37,33 @@ export function renderEquatorialGrid(
     const parallel: Array<[number, number]> = [];
     for (let ra = 0; ra <= 360; ra += 4) parallel.push([ra, dec]);
     strokePath(ctx, project, parallel);
+  }
+  ctx.stroke();
+}
+
+// The meridian: the great circle through due north, the zenith, and due south.
+// Drawn in the horizontal frame (it's fixed to the observer, not the stars).
+export function renderMeridian(
+  ctx: CanvasRenderingContext2D,
+  project: AltAzProjector,
+  alpha: number
+): void {
+  if (alpha <= 0.01) return;
+  ctx.strokeStyle = `rgba(150,180,220,${(0.22 * alpha).toFixed(3)})`;
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  let prev: [number, number] | null = null;
+  // North horizon → zenith → south horizon.
+  for (let alt = 0; alt <= 90; alt += 3) {
+    const p = project(alt, 0);
+    if (p && prev) { ctx.moveTo(prev[0], prev[1]); ctx.lineTo(p[0], p[1]); }
+    prev = p;
+  }
+  prev = null;
+  for (let alt = 90; alt >= 0; alt -= 3) {
+    const p = project(alt, 180);
+    if (p && prev) { ctx.moveTo(prev[0], prev[1]); ctx.lineTo(p[0], p[1]); }
+    prev = p;
   }
   ctx.stroke();
 }

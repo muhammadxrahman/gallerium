@@ -28,15 +28,46 @@ function starAlpha(magnitude: number): number {
   return Math.max(0.35, Math.min(1, 1.15 - magnitude * 0.12));
 }
 
-// `visibility` (0..1) fades the whole field as daylight grows.
+// Four soft diffraction spikes for the very brightest stars — a premium, static touch.
+function drawSpikes(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  len: number,
+  color: string,
+  alpha: number
+): void {
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.globalCompositeOperation = "lighter";
+  ctx.strokeStyle = color;
+  for (const [dx, dy] of [[1, 0], [0, 1]] as const) {
+    const grad = ctx.createLinearGradient(x - dx * len, y - dy * len, x + dx * len, y + dy * len);
+    grad.addColorStop(0, "transparent");
+    grad.addColorStop(0.5, color);
+    grad.addColorStop(1, "transparent");
+    ctx.strokeStyle = grad;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(x - dx * len, y - dy * len);
+    ctx.lineTo(x + dx * len, y + dy * len);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+// `visibility` (0..1) fades the whole field as daylight grows. `magLimit` hides
+// stars fainter than the chosen limiting magnitude (light-pollution control).
 export function renderStars(
   rc: RenderContext,
   stars: RenderedStar[],
-  visibility = 1
+  visibility = 1,
+  magLimit = 6.5
 ): void {
   if (visibility <= 0.01) return;
 
   for (const star of stars) {
+    if (star.magnitude > magLimit) continue;
     if (!isVisible(star.alt)) continue;
 
     const [x, y] = altAzToXY(star.alt, star.az, rc);
@@ -61,12 +92,19 @@ export function renderStars(
     rc.ctx.beginPath();
     rc.ctx.arc(x, y, radius, 0, Math.PI * 2);
     rc.ctx.fill();
+    rc.ctx.globalAlpha = 1;
+
+    // Diffraction spikes on the showpiece stars.
+    if (star.magnitude < 1.0) {
+      drawSpikes(rc.ctx, x, y, radius * 6, color, 0.5 * visibility);
+    }
   }
 
   rc.ctx.globalAlpha = 1;
 
   // Labels for the brightest named stars (decluttered against everything else).
   for (const star of stars) {
+    if (star.magnitude > magLimit) continue;
     if (!isVisible(star.alt) || !star.name || star.magnitude >= 2.0) continue;
     const [x, y] = altAzToXY(star.alt, star.az, rc);
     const radius = starRadius(star.magnitude);

@@ -13,29 +13,35 @@ function moonPhaseName(illumination: number, waxing: boolean): string {
   return `${waxing ? "Waxing" : "Waning"} ${shape}`;
 }
 
+const ACCENT: Record<string, string> = {
+  STAR: "#aab4ff",
+  PLANET: "#ffd9a0",
+  MOON: "#fff3c4",
+  SUN: "#ffd36b",
+  SATELLITE: "#7cffb0",
+};
+
 export function initInfoPanel(): void {
   panel = document.createElement("div");
   panel.id = "info-panel";
-  panel.style.cssText = `
-    position: fixed;
-    bottom: 40px;
-    left: 50%;
-    transform: translateX(-50%);
-    background: rgba(0, 0, 0, 0.85);
-    border: 1px solid rgba(255,255,255,0.15);
-    border-radius: 12px;
-    padding: 14px 20px;
-    color: white;
-    font-family: sans-serif;
-    font-size: 13px;
-    min-width: 220px;
-    max-width: 320px;
-    display: none;
-    pointer-events: auto;
-    backdrop-filter: blur(8px);
-    z-index: 100;
-  `;
   document.body.appendChild(panel);
+}
+
+function card(type: string, name: string, stats: Array<[string, string]>): string {
+  const accent = ACCENT[type] ?? "#ffffff";
+  const rows = stats
+    .map(
+      ([k, v]) =>
+        `<div class="info-stat-label">${k}</div><div class="info-stat-value">${v}</div>`
+    )
+    .join("");
+  return `
+    <div class="info-head">
+      <span class="info-badge" style="background:${accent}22;color:${accent}">${type}</span>
+      <div class="info-name">${name}</div>
+    </div>
+    <div class="info-stats">${rows}</div>
+  `;
 }
 
 export function updateInfoPanel(): void {
@@ -43,76 +49,45 @@ export function updateInfoPanel(): void {
   const obj = state.selected;
 
   if (!obj) {
-    panel.style.display = "none";
+    panel.classList.remove("show");
     return;
   }
-
-  panel.style.display = "block";
+  panel.classList.add("show");
 
   if (obj.type === "star") {
     const s = obj.data;
-    panel.innerHTML = `
-  <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
-    <span style="font-size:10px;padding:2px 7px;border-radius:20px;background:rgba(255,255,255,0.15);color:rgba(255,255,255,0.7);letter-spacing:0.5px">STAR</span>
-    <div style="font-size:15px;font-weight:bold">${s.name ?? `Star #${s.id}`}</div>
-  </div>
-  <div style="color:rgba(255,255,255,0.6);line-height:1.8">
-    Altitude: ${s.alt.toFixed(1)}°<br>
-    Azimuth: ${s.az.toFixed(1)}°<br>
-    Magnitude: ${s.magnitude.toFixed(2)}<br>
-    Color index: ${s.colorIndex.toFixed(2)}
-  </div>
-`;
+    panel.innerHTML = card("STAR", s.name ?? `Star #${s.id}`, [
+      ["Altitude", `${s.alt.toFixed(1)}°`],
+      ["Azimuth", `${s.az.toFixed(1)}°`],
+      ["Magnitude", s.magnitude.toFixed(2)],
+      ["Color index", s.colorIndex.toFixed(2)],
+    ]);
   } else if (obj.type === "planet") {
     const p = obj.data;
-    panel.innerHTML = `
-  <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
-    <span style="font-size:10px;padding:2px 7px;border-radius:20px;background:rgba(255,255,255,0.15);color:rgba(255,255,255,0.7);letter-spacing:0.5px">PLANET</span>
-    <div style="font-size:15px;font-weight:bold">${p.name}</div>
-  </div>
-  <div style="color:rgba(255,255,255,0.6);line-height:1.8">
-    Altitude: ${p.alt.toFixed(1)}°<br>
-    Azimuth: ${p.az.toFixed(1)}°
-  </div>
-    `;
+    panel.innerHTML = card("PLANET", p.name, [
+      ["Altitude", `${p.alt.toFixed(1)}°`],
+      ["Azimuth", `${p.az.toFixed(1)}°`],
+    ]);
   } else if (obj.type === "sun") {
     const s = obj.data;
-    panel.innerHTML = `
-  <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
-    <span style="font-size:10px;padding:2px 7px;border-radius:20px;background:rgba(255,255,255,0.15);color:rgba(255,255,255,0.7);letter-spacing:0.5px">SUN</span>
-    <div style="font-size:15px;font-weight:bold">Sun</div>
-  </div>
-  <div style="color:rgba(255,255,255,0.6);line-height:1.8">
-    Altitude: ${s.alt.toFixed(1)}°<br>
-    Azimuth: ${s.az.toFixed(1)}°
-  </div>
-    `;
+    panel.innerHTML = card("SUN", "Sun", [
+      ["Altitude", `${s.alt.toFixed(1)}°`],
+      ["Azimuth", `${s.az.toFixed(1)}°`],
+    ]);
   } else if (obj.type === "moon") {
     const m = obj.data;
-    panel.innerHTML = `
-  <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
-    <span style="font-size:10px;padding:2px 7px;border-radius:20px;background:rgba(255,255,255,0.15);color:rgba(255,255,255,0.7);letter-spacing:0.5px">MOON</span>
-    <div style="font-size:15px;font-weight:bold">Moon</div>
-  </div>
-  <div style="color:rgba(255,255,255,0.6);line-height:1.8">
-    Altitude: ${m.alt.toFixed(1)}°<br>
-    Azimuth: ${m.az.toFixed(1)}°<br>
-    Illumination: ${Math.round(m.illumination * 100)}%<br>
-    Phase: ${moonPhaseName(m.illumination, m.waxing)}
-  </div>
-    `;
+    panel.innerHTML = card("MOON", "Moon", [
+      ["Altitude", `${m.alt.toFixed(1)}°`],
+      ["Azimuth", `${m.az.toFixed(1)}°`],
+      ["Illumination", `${Math.round(m.illumination * 100)}%`],
+      ["Phase", moonPhaseName(m.illumination, m.waxing)],
+    ]);
   } else if (obj.type === "satellite") {
     const s = obj.data;
-    panel.innerHTML = `
-  <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
-    <span style="font-size:10px;padding:2px 7px;border-radius:20px;background:rgba(255,255,255,0.15);color:rgba(255,255,255,0.7);letter-spacing:0.5px">SATELLITE</span>
-    <div style="font-size:15px;font-weight:bold">${s.name}</div>
-  </div>
-  <div style="color:rgba(255,255,255,0.6);line-height:1.8">
-    Altitude: ${s.alt.toFixed(1)}°<br>
-    Azimuth: ${s.az.toFixed(1)}°<br>
-    Orbital height: ${s.altitude.toFixed(0)} km
-  </div>
-    `;
+    panel.innerHTML = card("SATELLITE", s.name, [
+      ["Altitude", `${s.alt.toFixed(1)}°`],
+      ["Azimuth", `${s.az.toFixed(1)}°`],
+      ["Orbital height", `${s.altitude.toFixed(0)} km`],
+    ]);
   }
 }

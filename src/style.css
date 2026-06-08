@@ -6,6 +6,7 @@
 
 :root {
   --font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --accent: #6cc6ff;
 }
 
 html, body {
@@ -15,6 +16,7 @@ html, body {
   overflow: hidden;
   font-family: var(--font);
   -webkit-font-smoothing: antialiased;
+  color: #fff;
 }
 
 #app {
@@ -28,6 +30,11 @@ html, body {
   height: 100%;
   display: block;
   touch-action: none; /* we handle pinch-zoom ourselves */
+  opacity: 0;
+  transition: opacity 0.8s ease;
+}
+#sky-canvas.ready {
+  opacity: 1;
 }
 
 #status {
@@ -49,7 +56,51 @@ html, body {
   display: none;
 }
 
-/* Frosted-glass pill button used for all top controls. */
+/* ---- Loading overlay ---- */
+#loader {
+  position: fixed;
+  inset: 0;
+  z-index: 500;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 22px;
+  background: radial-gradient(120% 80% at 50% 30%, #0a1230 0%, #05060f 60%, #03040a 100%);
+  transition: opacity 0.6s ease;
+}
+#loader.hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+.loader-mark {
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: 6px;
+  color: rgba(255, 255, 255, 0.92);
+  text-indent: 6px;
+}
+.loader-mark span {
+  color: var(--accent);
+}
+.loader-ring {
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.12);
+  border-top-color: var(--accent);
+  animation: spin 0.9s linear infinite;
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+#loader-text {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.55);
+  letter-spacing: 0.3px;
+}
+
+/* ---- Frosted pill buttons ---- */
 .ui-chip {
   appearance: none;
   display: inline-flex;
@@ -78,7 +129,7 @@ html, body {
   transform: scale(0.97);
 }
 
-/* Frosted panel (Layers menu, dialogs). */
+/* ---- Frosted panel (Layers menu) ---- */
 .ui-panel {
   background: rgba(12, 14, 22, 0.72);
   border: 1px solid rgba(255, 255, 255, 0.14);
@@ -87,12 +138,84 @@ html, body {
   -webkit-backdrop-filter: blur(16px) saturate(1.3);
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
 }
-.ui-panel label:hover {
+.ui-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 8px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.85);
+}
+.ui-row:hover {
   background: rgba(255, 255, 255, 0.06);
 }
 .ui-panel input[type="checkbox"] {
-  accent-color: #6cc6ff;
+  accent-color: var(--accent);
   width: 16px;
   height: 16px;
   cursor: pointer;
+}
+.ui-panel input[type="range"] {
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+/* ---- Info card (tap to identify) ---- */
+#info-panel {
+  position: fixed;
+  bottom: 56px;
+  left: 50%;
+  transform: translateX(-50%) translateY(8px);
+  width: min(340px, calc(100vw - 32px));
+  background: rgba(12, 14, 22, 0.74);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 16px;
+  padding: 16px 18px;
+  backdrop-filter: blur(18px) saturate(1.3);
+  -webkit-backdrop-filter: blur(18px) saturate(1.3);
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
+  z-index: 150;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.18s ease, transform 0.18s ease;
+}
+#info-panel.show {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+  pointer-events: auto;
+}
+.info-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.info-badge {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  padding: 3px 9px;
+  border-radius: 999px;
+}
+.info-name {
+  font-size: 18px;
+  font-weight: 600;
+  color: #fff;
+}
+.info-stats {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 7px 16px;
+}
+.info-stat-label {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.5);
+}
+.info-stat-value {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.92);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
 }

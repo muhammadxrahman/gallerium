@@ -4,6 +4,10 @@
 // projection, so render modules stay free of astronomy math.
 export type EqProjector = (ra: number, dec: number) => [number, number] | null;
 
+// Same idea but in the horizontal frame (alt/az degrees) — for horizon-fixed
+// reference lines like the meridian.
+export type AltAzProjector = (alt: number, az: number) => [number, number] | null;
+
 export interface RenderContext {
   canvas: HTMLCanvasElement;
   ctx: CanvasRenderingContext2D;

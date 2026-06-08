@@ -177,6 +177,9 @@ the single source of truth for what's left.
   Daylight toggle; stars floored so they never vanish), constellation lines + names,
   Milky Way band, ecliptic + equatorial grid (toggleable), label decluttering, on-canvas
   selection ring, richer star rendering, modern frosted-glass UI chrome, SVG favicon
+- [x] Sophistication pass: planet glyphs (Saturn rings, Jupiter belts, shaded spheres),
+  bright-star diffraction spikes, dome vignette + glassy rim, meridian line, elegant
+  loading overlay + canvas fade-in, redesigned info card, star-density (limiting-mag) slider
 
 ### Beautiful (visual fidelity & UX)
 - [x] **P0** Day/night sky gradient + twilight + horizon glow (Sun-altitude driven), with a
@@ -188,11 +191,13 @@ the single source of truth for what's left.
 - [x] **P1** On-canvas selection ring (`renderSelection` in main.ts).
 - [x] **P1** Milky Way band (`render/milkyway.ts`, galactic-plane samples).
 - [x] Modern frosted-glass UI chrome (`.ui-chip` / `.ui-panel`), SVG favicon.
-- [ ] **P2** Richer star/planet rendering: subtle twinkle, planet disks + Saturn rings,
-  Moon earthshine/libration. (Magnitude→size+alpha curve + bright-star glow done.)
-- [ ] **P2** First-run onboarding, real loading spinner (replace status string), smooth
-  map↔sky transition. (Meridian reference line fits here too.)
-- [ ] **P2** Light-pollution / limiting-magnitude (Bortle) slider.
+- [x] **P2** Iconic planet glyphs: shaded spheres with Saturn's rings + Jupiter's belts
+  (`drawPlanetBody`, shared map/AR); bright-star diffraction spikes; dome vignette + rim.
+- [x] **P2** Elegant loading overlay (wordmark + spinner, canvas fade-in); meridian line.
+- [x] **P2** Light-pollution / limiting-magnitude slider (Layers → "Star density").
+- [x] **P2** Redesigned info card (per-type accent, frosted, animated in).
+- [ ] **P2** Remaining: subtle twinkle (skipped — would force continuous redraw, hurting
+  battery), Moon earthshine/libration, smooth map↔sky transition, first-run onboarding tour.
 
 ### Accurate (physical correctness)
 - [ ] **P0** Proper AR pose model: use full device orientation (alpha/beta/gamma + screen

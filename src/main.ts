@@ -11,15 +11,16 @@ import {
   altAzToXYPointed,
   type RenderContext,
   type EqProjector,
+  type AltAzProjector,
 } from "./render/canvas";
 import { renderStars, type RenderedStar } from "./render/stars";
-import { renderPlanets, type RenderedPlanet } from "./render/planets";
+import { renderPlanets, drawPlanetBody, type RenderedPlanet } from "./render/planets";
 import { renderSatellites, type RenderedSatellite } from "./render/satellites";
 import { renderMoon, type RenderedMoon } from "./render/moon";
 import { renderSun, type RenderedSun } from "./render/sun";
 import { renderSkyDome, renderSkyAR, starVisibility } from "./render/sky";
 import { renderConstellationLines, renderConstellationNames } from "./render/constellations";
-import { renderEquatorialGrid, renderEcliptic } from "./render/grid";
+import { renderEquatorialGrid, renderEcliptic, renderMeridian } from "./render/grid";
 import { renderMilkyWay } from "./render/milkyway";
 import { beginLabels, drawLabel } from "./render/labels";
 import { loadStars } from "./data/stars";
@@ -54,6 +55,9 @@ let isSkyView = false;
 
 const canvas = document.getElementById("sky-canvas") as HTMLCanvasElement;
 const statusEl = document.getElementById("status") as HTMLDivElement;
+const loaderEl = document.getElementById("loader");
+const loaderTextEl = document.getElementById("loader-text");
+let firstDrawDone = false;
 
 // --- Preloaded data ---
 let starsData: Awaited<ReturnType<typeof loadStars>> = [];
@@ -61,6 +65,16 @@ let tlesData: Awaited<ReturnType<typeof loadTLEs>> = [];
 
 function setStatus(msg: string) {
   statusEl.textContent = msg;
+  // Mirror progress into the loading overlay while it's still up.
+  if (loaderTextEl && !firstDrawDone && msg) loaderTextEl.textContent = msg;
+}
+
+// Reveal the sky and dismiss the loader once the first frame is painted.
+function revealOnce(): void {
+  if (firstDrawDone) return;
+  firstDrawDone = true;
+  canvas.classList.add("ready");
+  loaderEl?.classList.add("hidden");
 }
 
 // Apply the user's zoom + pan to the map-view dome. Must be applied identically
@@ -100,11 +114,13 @@ function renderSkyView(
   centerAz: number,
   centerAlt: number,
   FOV: number, // degrees visible at once (narrower = zoomed in)
-  visibility: number // 0..1 daylight fade for stars
+  visibility: number, // 0..1 daylight fade for stars
+  magLimit: number // limiting magnitude (light-pollution control)
 ): void {
   // Stars
   if (visibility > 0.01) {
     for (const star of stars) {
+      if (star.magnitude > magLimit) continue;
       if (star.alt < -0.5) continue;
       const pos = altAzToXYPointed(star.alt, star.az, centerAlt, centerAz, FOV, rc);
       if (!pos) continue;
@@ -134,13 +150,8 @@ function renderSkyView(
     const pos = altAzToXYPointed(planet.alt, planet.az, centerAlt, centerAz, FOV, rc);
     if (!pos) continue;
     const [x, y] = pos;
-
-    rc.ctx.fillStyle = "#fffacd";
-    rc.ctx.beginPath();
-    rc.ctx.arc(x, y, 5, 0, Math.PI * 2);
-    rc.ctx.fill();
-
-    drawLabel(rc.ctx, planet.name, x + 7, y + 4, {
+    const reach = drawPlanetBody(rc.ctx, x, y, planet.name);
+    drawLabel(rc.ctx, planet.name, x + reach + 5, y + 4, {
       font: "12px ui-sans-serif, system-ui, sans-serif",
       size: 12,
       fill: "rgba(255,255,255,0.9)",
@@ -312,6 +323,7 @@ function draw(): void {
   const daylight = layers.daylight;
   const sunAlt = daylight ? trueSunAlt : -90;
   const vis = daylight ? Math.max(0.5, starVisibility(trueSunAlt)) : 1;
+  const magLimit = layers.magnitudeLimit;
 
   if (isSkyView && isListening()) {
     const fov = 90 / zoom; // narrower field of view = zoomed in
@@ -322,12 +334,17 @@ function draw(): void {
     renderSkyAR(rc, sunAlt, horizonY);
 
     const project = makeArProjector(rc, altitude, azimuth, fov);
+    const projectAltAz: AltAzProjector = (alt, az) =>
+      alt < -0.5 ? null : altAzToXYPointed(alt, az, altitude, azimuth, fov, rc);
     if (layers.milkyway) renderMilkyWay(rc.ctx, project, MILKYWAY, vis);
-    if (layers.grid) renderEquatorialGrid(rc.ctx, project, 1);
+    if (layers.grid) {
+      renderEquatorialGrid(rc.ctx, project, 1);
+      renderMeridian(rc.ctx, projectAltAz, 1);
+    }
     if (layers.ecliptic) renderEcliptic(rc.ctx, project, ECLIPTIC, 1);
     if (layers.constellations) renderConstellationLines(rc.ctx, project, vis);
 
-    renderSkyView(rc, lastStars, lastPlanets, lastSatellites, azimuth, altitude, fov, vis);
+    renderSkyView(rc, lastStars, lastPlanets, lastSatellites, azimuth, altitude, fov, vis, magLimit);
     if (lastMoon) renderMoon(rc, lastMoon, true, azimuth, altitude, fov);
     if (lastSun) renderSun(rc, lastSun, true, azimuth, altitude, fov);
 
@@ -337,14 +354,18 @@ function draw(): void {
   } else {
     applyView(rc); // zoom + pan the dome
     const project = makeMapProjector(rc);
+    const projectAltAz: AltAzProjector = (alt, az) => (alt < 0 ? null : altAzToXY(alt, az, rc));
 
     renderSkyDome(rc, sunAlt, sunAz);
     if (layers.milkyway) renderMilkyWay(rc.ctx, project, MILKYWAY, vis);
-    if (layers.grid) renderEquatorialGrid(rc.ctx, project, 1);
+    if (layers.grid) {
+      renderEquatorialGrid(rc.ctx, project, 1);
+      renderMeridian(rc.ctx, projectAltAz, 1);
+    }
     if (layers.ecliptic) renderEcliptic(rc.ctx, project, ECLIPTIC, 1);
     if (layers.constellations) renderConstellationLines(rc.ctx, project, vis);
 
-    renderStars(rc, lastStars, vis);
+    renderStars(rc, lastStars, vis, magLimit);
     renderSatellites(rc, lastSatellites);
     renderPlanets(rc, lastPlanets);
     if (lastMoon) renderMoon(rc, lastMoon, false);
@@ -395,6 +416,7 @@ function loop(t: number): void {
     if (needsRedraw) {
       draw();
       needsRedraw = false;
+      revealOnce(); // first painted frame → fade out the loader, fade in the sky
     }
   }
   requestAnimationFrame(loop);
