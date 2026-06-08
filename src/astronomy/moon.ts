@@ -23,6 +23,17 @@ function getJulianDate(date: Date): number {
   return date.getTime() / 86400000 + 2440587.5;
 }
 
+// Human-readable phase from illuminated fraction + waxing/waning direction.
+export function moonPhaseName(illumination: number, waxing: boolean): string {
+  if (illumination < 0.04) return "New Moon";
+  if (illumination > 0.96) return "Full Moon";
+  if (illumination > 0.46 && illumination < 0.54) {
+    return waxing ? "First Quarter" : "Last Quarter";
+  }
+  const shape = illumination < 0.5 ? "Crescent" : "Gibbous";
+  return `${waxing ? "Waxing" : "Waning"} ${shape}`;
+}
+
 export function getMoonPosition(date: Date): MoonPosition {
   const jd = getJulianDate(date);
   const T = (jd - 2451545.0) / 36525; // centuries since J2000

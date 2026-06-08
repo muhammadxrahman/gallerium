@@ -29,6 +29,8 @@ src/
 │   ├── refraction.ts     # Atmospheric refraction (Bennett): true → apparent altitude
 │   ├── precession.ts     # Precess J2000 RA/Dec to date (Meeus ch. 21)
 │   ├── parallax.ts       # Topocentric correction (lunar parallax, Meeus ch. 40)
+│   ├── riseset.ts        # Rise / transit / set + twilight times
+│   ├── passes.ts         # Visible satellite pass prediction (sunlit + observer dark)
 │   ├── referenceLines.ts # Static geometry: ecliptic path + Milky Way (galactic) band
 │   └── satellites.ts     # SGP4 propagation + sunlit/shadow test (satellite.js@4.1.4)
 ├── data/             # Data loading with IndexedDB caching
@@ -55,11 +57,15 @@ src/
 │   ├── PermissionPrompt.ts # iOS orientation permission flow
 │   ├── LocationControl.ts  # Manual lat/long entry + GPS re-request
 │   ├── Layers.ts         # Overlay toggles (constellations, grid, ecliptic, Milky Way) + daylight
+│   ├── TimeControl.ts    # Time-travel chip + panel (datetime / ±h ±d / Live)
+│   ├── Search.ts         # Object search overlay (→ "guide me there")
+│   ├── Highlights.ts     # "Tonight" feed panel
 │   └── Zoom.ts           # Pinch + wheel zoom factor (shared by both views)
 ├── store/
 │   └── state.ts          # Shared selected object state
 ├── utils/
 │   ├── cache.ts          # IndexedDB get/set/delete + cacheGetEntry (staleness)
+│   ├── clock.ts          # Sky time (live or scrubbed) — single source for all positions
 │   ├── fetchWithFallback.ts # Mirror fallback + retry + abort timeout (tested)
 │   ├── geo.ts            # Geolocation + localStorage persistence
 │   └── math.ts           # toRad, toDeg, normalizeAngle, clamp, lerp
@@ -80,6 +86,10 @@ src/
 2. `getLST()` from sidereal.ts gives Local Sidereal Time
 3. `equatorialToHorizontal()` converts to Alt/Az for the observer
 4. `altAzToXY()` or `altAzToXYPointed()` converts to canvas pixels
+
+**Sky time.** All positions read `getSkyTime()` (utils/clock.ts), not `new Date()` — the loop
+passes it into `computeBodies`/`computeSatellites`. Live by default; the Time control freezes
+it for planning. Star precession is fixed at load epoch (negligible drift within a session).
 
 **Apparent position.** `computeBodies` (main.ts) turns geometric into *apparent* positions:
 stars are precessed J2000→date once per load (`precessedStars`); the Moon's geocentric
@@ -204,6 +214,9 @@ the single source of truth for what's left.
   projectors), resilient data loading (`fetchWithFallback` + mirrors + refresh + staleness), CI
 - [x] Accurate section (all): device pose model, atmospheric refraction, planet magnitudes +
   phase, satellite sunlit/visibility, lunar parallax, precession, sky-view hit detection
+- [x] Real-world P0/P1: time travel (clock + loop reads `getSkyTime()`), search + guide-me-there
+  (map centering / AR arrow), rise/set/twilight in the info card, ISS pass prediction,
+  "Tonight" highlights feed; fixed quoted-empty HYG names polluting search
 
 ### Beautiful (visual fidelity & UX)
 - [x] **P0** Day/night sky gradient + twilight + horizon glow (Sun-altitude driven), with a
@@ -242,15 +255,17 @@ the single source of truth for what's left.
   taps use the active view's projector (map dome or AR). Selection ring shows in both.
 
 ### Real-world applicable (astronomy utility)
-- [ ] **P0** Time control / "time travel": scrub to tonight or any date/time. Everything is
-  already `Date`-parameterized, so this is mostly UI — turns "now" into a planning tool.
-- [ ] **P0** Search + "guide me there": find an object, then pan/zoom (map) or an AR arrow
-  (sky) points you to it.
-- [ ] **P1** Rise/set/transit + twilight times (civil/nautical/astronomical) for
-  Sun/Moon/planets.
-- [ ] **P1** ISS & satellite pass predictions ("visible 9:42pm, rising NW, mag −3").
-- [ ] **P1** Tonight's highlights feed: conjunctions, Moon phase, bright-planet visibility,
-  meteor showers.
+- [x] **P0** Time travel (`utils/clock.ts` + `TimeControl`): the whole render loop reads
+  `getSkyTime()`, so scrubbing to any date/time (or stepping ±h/±d) shows the sky then.
+- [x] **P0** Search + "guide me there" (`Search` + index in main): find a star/planet/
+  constellation → map centers on it (`centerOn`), AR shows a guidance arrow; selection
+  stays live as the sky moves. (Fixed: unnamed HYG stars no longer pollute results.)
+- [x] **P1** Rise/set/transit + twilight (`astronomy/riseset.ts`, tested) — shown in the
+  info card and used by the highlights feed.
+- [x] **P1** ISS & satellite pass predictions (`astronomy/passes.ts`, tested) — visible
+  (sunlit + dark) passes with peak elevation and rise→set bearing.
+- [x] **P1** Tonight's highlights feed (`Highlights`): sunset/astro-dark, Moon phase +
+  rise/set, visible planets, close pairings (<5°), next ISS pass.
 - [ ] **P2** Deep-sky objects (Messier/Caldwell) with positions + info.
 - [ ] **P2** Observing list / favorites; shareable location+time+view URL.
 - [ ] **P2** Settings: coordinate display (alt/az vs RA/dec), magnitude limit, units, i18n.
@@ -281,7 +296,7 @@ the single source of truth for what's left.
 
 ## Testing Approach
 
-TDD with Vitest (81 tests). Every astronomy module has a test file, plus the render
+TDD with Vitest (93 tests). Every astronomy module has a test file, plus the render
 projection (`render/canvas.test.ts`), hit detection (`components/HitDetection.test.ts`),
 the star/TLE parsers, and `utils/fetchWithFallback.test.ts` (mirror fallback/retry, mocked
 `fetch`). Ground truth for astronomy is cross-checked against Stellarium Web or JPL

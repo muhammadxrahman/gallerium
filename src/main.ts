@@ -19,11 +19,11 @@ import { renderSatellites, type RenderedSatellite } from "./render/satellites";
 import { renderMoon, type RenderedMoon } from "./render/moon";
 import { renderSun, type RenderedSun } from "./render/sun";
 import { renderSkyDome, renderSkyAR, starVisibility } from "./render/sky";
-import { renderConstellationLines, renderConstellationNames } from "./render/constellations";
+import { renderConstellationLines, renderConstellationNames, constellationNames } from "./render/constellations";
 import { renderEquatorialGrid, renderEcliptic, renderMeridian } from "./render/grid";
 import { renderMilkyWay } from "./render/milkyway";
 import { beginLabels } from "./render/labels";
-import { loadStars } from "./data/stars";
+import { loadStars, cleanProperName } from "./data/stars";
 import { loadTLEs, getTleMeta } from "./data/tles";
 import { equatorialToHorizontal } from "./astronomy/coordinates";
 import { getLST } from "./astronomy/sidereal";
@@ -33,13 +33,24 @@ import { eclipticPath, milkyWayBand } from "./astronomy/referenceLines";
 import { refractedAltitude } from "./astronomy/refraction";
 import { precessFromJ2000 } from "./astronomy/precession";
 import { topocentricCorrection } from "./astronomy/parallax";
+import {
+  riseTransitSet,
+  STD_ALT_SUN,
+  STD_ALT_STAR,
+  TWILIGHT_ASTRONOMICAL,
+} from "./astronomy/riseset";
+import { predictPasses } from "./astronomy/passes";
 import type { Star } from "./data/stars";
 import { requestLocation, cachedLocation, saveLocation } from "./utils/geo";
+import { getSkyTime } from "./utils/clock";
 import { initLocationControl } from "./components/LocationControl";
 import { initLayersControl, getLayers, setLayer } from "./components/Layers";
-import { initZoom, getZoom, getPan, getViewVersion, recentlyInteracted } from "./components/Zoom";
+import { initTimeControl } from "./components/TimeControl";
+import { initSearch, type SearchItem } from "./components/Search";
+import { initHighlights, type HighlightItem } from "./components/Highlights";
+import { initZoom, getZoom, getPan, getViewVersion, recentlyInteracted, centerOn } from "./components/Zoom";
 import type { Observer } from "./astronomy/coordinates";
-import { getMoonPosition } from "./astronomy/moon";
+import { getMoonPosition, moonPhaseName } from "./astronomy/moon";
 import { getSunPosition } from "./astronomy/sun";
 import { state } from "./store/state";
 
@@ -73,8 +84,230 @@ let precessedStars: Star[] = [];
 function applyPrecession(now: Date): void {
   precessedStars = starsData.map((s) => {
     const { ra, dec } = precessFromJ2000(s.ra, s.dec, now);
-    return { ...s, ra, dec };
+    // Sanitize names here so cached catalogs (parsed before the quote fix) don't
+    // leak `""` into search results or map labels — a quote-only name → unnamed.
+    return { ...s, ra, dec, name: cleanProperName(s.name) };
   });
+}
+
+// --- Search index + "guide me there" ---
+type TargetMeta =
+  | { kind: "sun" }
+  | { kind: "moon" }
+  | { kind: "planet"; name: string }
+  | { kind: "star"; id: number; label: string }
+  | { kind: "con"; label: string; ra: number; dec: number };
+
+const PLANET_NAMES = ["Mercury", "Venus", "Mars", "Jupiter", "Saturn"];
+let searchItems: SearchItem[] = [];
+const searchMeta = new Map<string, TargetMeta>();
+let currentTarget: TargetMeta | null = null;
+
+function buildSearchIndex(): void {
+  searchItems = [];
+  searchMeta.clear();
+  const add = (id: string, label: string, sublabel: string, meta: TargetMeta) => {
+    searchItems.push({ id, label, sublabel });
+    searchMeta.set(id, meta);
+  };
+  add("sun", "Sun", "Star", { kind: "sun" });
+  add("moon", "Moon", "Moon", { kind: "moon" });
+  for (const n of PLANET_NAMES) add(`planet:${n}`, n, "Planet", { kind: "planet", name: n });
+  for (const s of precessedStars) {
+    const label = cleanProperName(s.name);
+    if (label) add(`star:${s.id}`, label, "Star", { kind: "star", id: s.id, label });
+  }
+  for (const c of constellationNames()) {
+    add(`con:${c.n}`, c.n, "Constellation", { kind: "con", label: c.n, ra: c.ra, dec: c.dec });
+  }
+}
+
+function targetLabel(meta: TargetMeta): string {
+  if (meta.kind === "sun") return "Sun";
+  if (meta.kind === "moon") return "Moon";
+  if (meta.kind === "planet") return meta.name;
+  return meta.label;
+}
+
+function targetAltAz(meta: TargetMeta): { alt: number; az: number } | null {
+  switch (meta.kind) {
+    case "sun": return lastSun ? { alt: lastSun.alt, az: lastSun.az } : null;
+    case "moon": return lastMoon ? { alt: lastMoon.alt, az: lastMoon.az } : null;
+    case "planet": {
+      const p = lastPlanets.find((x) => x.name === meta.name);
+      return p ? { alt: p.alt, az: p.az } : null;
+    }
+    case "star": {
+      const s = lastStars.find((x) => x.id === meta.id);
+      return s ? { alt: s.alt, az: s.az } : null;
+    }
+    case "con": {
+      if (!observer) return null;
+      return equatorialToHorizontal({ ra: meta.ra, dec: meta.dec }, observer, lastLST);
+    }
+  }
+}
+
+// Reflect the active target into the selection (so the info card + ring follow it
+// live as the sky moves). Constellations have no info card, so they clear it.
+function syncTargetSelection(meta: TargetMeta): void {
+  if (meta.kind === "sun") state.selected = lastSun ? { type: "sun", data: lastSun } : null;
+  else if (meta.kind === "moon") state.selected = lastMoon ? { type: "moon", data: lastMoon } : null;
+  else if (meta.kind === "planet") {
+    const p = lastPlanets.find((x) => x.name === meta.name);
+    state.selected = p ? { type: "planet", data: p } : null;
+  } else if (meta.kind === "star") {
+    const s = lastStars.find((x) => x.id === meta.id);
+    state.selected = s ? { type: "star", data: s } : null;
+  } else {
+    state.selected = null;
+  }
+}
+
+function selectSearchResult(id: string): void {
+  const meta = searchMeta.get(id);
+  currentTarget = meta ?? null;
+  if (!meta) return;
+  syncTargetSelection(meta);
+
+  const aa = targetAltAz(meta);
+  if (!aa) {
+    setStatus(`${targetLabel(meta)} isn't available`);
+  } else if (aa.alt < 0) {
+    setStatus(`${targetLabel(meta)} is below the horizon`);
+  } else if (!(isSkyView && isListening())) {
+    // Map view: bring it to the center of the dome.
+    const rc = initCanvas(canvas);
+    const [x, y] = altAzToXY(aa.alt, aa.az, rc);
+    centerOn(x, y, rc.centerX, rc.centerY, 2.5);
+  }
+  updateInfoPanel(observer);
+  markDirty();
+}
+
+const COMPASS_16 = ["N","NNE","NE","ENE","E","ESE","SE","SSE","S","SSW","SW","WSW","W","WNW","NW","NNW"];
+function dirName(az: number): string {
+  return COMPASS_16[Math.round(((az % 360) + 360) % 360 / 22.5) % 16];
+}
+function clockStr(d: Date): string {
+  return d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+}
+function angularSeparation(ra1: number, dec1: number, ra2: number, dec2: number): number {
+  const r = Math.PI / 180;
+  const c =
+    Math.sin(dec1 * r) * Math.sin(dec2 * r) +
+    Math.cos(dec1 * r) * Math.cos(dec2 * r) * Math.cos((ra1 - ra2) * r);
+  return Math.acos(Math.max(-1, Math.min(1, c))) * (180 / Math.PI);
+}
+
+// "Tonight" feed: sunset/darkness, Moon, visible planets, close pairings, next ISS
+// pass. Composed from the live computed positions + rise/set + pass prediction.
+function computeHighlights(): HighlightItem[] {
+  if (!observer) return [];
+  const now = getSkyTime();
+  const items: HighlightItem[] = [];
+
+  if (lastSun) {
+    const sset = riseTransitSet(lastSun.ra, lastSun.dec, observer, now, STD_ALT_SUN);
+    const dark = riseTransitSet(lastSun.ra, lastSun.dec, observer, now, TWILIGHT_ASTRONOMICAL);
+    const parts: string[] = [];
+    if (sset.set) parts.push(`Sunset ${clockStr(sset.set)}`);
+    if (dark.set) parts.push(`astro-dark ${clockStr(dark.set)}`);
+    if (parts.length) items.push({ icon: "☀", text: parts.join(" · ") });
+  }
+
+  if (lastMoon) {
+    const rts = riseTransitSet(lastMoon.ra, lastMoon.dec, observer, now, STD_ALT_STAR);
+    let when = "";
+    if (lastMoon.alt >= 0 && rts.set) when = `, sets ${clockStr(rts.set)}`;
+    else if (lastMoon.alt < 0 && rts.rise) when = `, rises ${clockStr(rts.rise)}`;
+    const phase = moonPhaseName(lastMoon.illumination, lastMoon.waxing);
+    items.push({ icon: "☾", text: `${phase} (${Math.round(lastMoon.illumination * 100)}%)${when}` });
+  }
+
+  for (const p of lastPlanets) {
+    const rts = riseTransitSet(p.ra, p.dec, observer, now, STD_ALT_STAR);
+    const mag = `mag ${p.magnitude.toFixed(1)}`;
+    if (p.alt >= 0) {
+      items.push({ icon: "●", text: `${p.name} up now (${mag})${rts.set ? `, sets ${clockStr(rts.set)}` : ""}` });
+    } else if (rts.rise) {
+      items.push({ icon: "●", text: `${p.name} rises ${clockStr(rts.rise)} (${mag})` });
+    }
+  }
+
+  // Close pairings (Moon + planets within 5°).
+  const bodies = [
+    ...(lastMoon ? [{ name: "Moon", ra: lastMoon.ra, dec: lastMoon.dec }] : []),
+    ...lastPlanets.map((p) => ({ name: p.name, ra: p.ra, dec: p.dec })),
+  ];
+  for (let i = 0; i < bodies.length; i++) {
+    for (let j = i + 1; j < bodies.length; j++) {
+      const sep = angularSeparation(bodies[i].ra, bodies[i].dec, bodies[j].ra, bodies[j].dec);
+      if (sep < 5) {
+        items.push({ icon: "✧", text: `${bodies[i].name} & ${bodies[j].name} ${sep.toFixed(1)}° apart` });
+      }
+    }
+  }
+
+  // Next visible ISS pass in the coming 24h.
+  const iss = tlesData.find((t) => t.name.includes("ISS"));
+  if (iss) {
+    const passes = predictPasses(iss, observer, now, { hours: 24 });
+    if (passes.length) {
+      const p = passes[0];
+      items.push({
+        icon: "🛰",
+        text: `ISS ${clockStr(p.start)} — peak ${p.peakElevation.toFixed(0)}°, ${dirName(p.startAz)}→${dirName(p.endAz)}`,
+      });
+    }
+  }
+
+  return items;
+}
+
+// AR guidance: an arrow from the crosshair toward the target (turn this way).
+function renderGuideArrow(rc: RenderContext, centerAz: number, centerAlt: number): void {
+  if (!currentTarget) return;
+  const aa = targetAltAz(currentTarget);
+  if (!aa) return;
+  const dAz = (((aa.az - centerAz + 540) % 360) - 180);
+  const dAlt = aa.alt - centerAlt;
+  const len = Math.hypot(dAz, dAlt);
+
+  rc.ctx.save();
+  rc.ctx.fillStyle = "rgba(120,220,255,0.95)";
+  rc.ctx.strokeStyle = "rgba(120,220,255,0.95)";
+  rc.ctx.font = "bold 13px ui-sans-serif, system-ui, sans-serif";
+  rc.ctx.textAlign = "center";
+
+  if (len < 2.5) {
+    rc.ctx.lineWidth = 2;
+    rc.ctx.beginPath();
+    rc.ctx.arc(rc.centerX, rc.centerY, 22, 0, Math.PI * 2);
+    rc.ctx.stroke();
+    rc.ctx.fillText(targetLabel(currentTarget), rc.centerX, rc.centerY - 30);
+  } else {
+    const ux = dAz / len;
+    const uy = -dAlt / len; // up on screen = higher altitude
+    const R = Math.min(rc.width, rc.height) * 0.3;
+    const tx = rc.centerX + ux * R;
+    const ty = rc.centerY + uy * R;
+    const ang = Math.atan2(uy, ux);
+    rc.ctx.lineWidth = 3;
+    rc.ctx.beginPath();
+    rc.ctx.moveTo(rc.centerX + ux * 40, rc.centerY + uy * 40);
+    rc.ctx.lineTo(tx, ty);
+    rc.ctx.stroke();
+    // arrowhead
+    rc.ctx.beginPath();
+    rc.ctx.moveTo(tx, ty);
+    rc.ctx.lineTo(tx - 12 * Math.cos(ang - 0.4), ty - 12 * Math.sin(ang - 0.4));
+    rc.ctx.lineTo(tx - 12 * Math.cos(ang + 0.4), ty - 12 * Math.sin(ang + 0.4));
+    rc.ctx.closePath();
+    rc.ctx.fill();
+    rc.ctx.fillText(targetLabel(currentTarget), tx, ty - 14);
+  }
+  rc.ctx.restore();
 }
 
 function setStatus(msg: string) {
@@ -249,6 +482,7 @@ async function refreshData(): Promise<void> {
   if (stars.status === "fulfilled") {
     starsData = stars.value;
     applyPrecession(new Date());
+    buildSearchIndex();
   }
   if (tles.status === "fulfilled") tlesData = tles.value;
   if (stars.status === "rejected" && tles.status === "rejected") {
@@ -385,20 +619,24 @@ function draw(): void {
     renderConstellationNames(rc.ctx, project, vis);
   }
 
+  // Keep a guided (searched) target's selection live as the sky moves.
+  if (currentTarget) syncTargetSelection(currentTarget);
   renderSelection(rc, projectAltAz); // works in both views now
 
   if (isAR) {
+    const o = getOrientation();
     renderArHud(rc);
+    renderGuideArrow(rc, o.azimuth, o.altitude); // points toward a searched target
   } else {
     renderCompass(rc);
   }
 
-  updateInfoPanel();
+  updateInfoPanel(observer);
 }
 
 function loop(t: number): void {
   if (observer) {
-    const now = new Date();
+    const now = getSkyTime(); // live wall clock, or the user's scrubbed time
 
     if (t - lastBodiesAt >= BODIES_INTERVAL_MS) {
       computeBodies(now);
@@ -448,6 +686,7 @@ async function init() {
     return [];
   });
   applyPrecession(new Date()); // precess the J2000 catalog to the current epoch
+  buildSearchIndex();
 
   setStatus(
     starsData.length > 0
@@ -506,6 +745,18 @@ async function init() {
   // Layers toggle panel (constellations, Milky Way, ecliptic, grid) + data refresh.
   initLayersControl(markDirty, refreshData);
 
+  // Time travel — scrub to any date/time, or stay live.
+  initTimeControl(() => {
+    invalidatePositions(); // new time → recompute the whole sky next frame
+    markDirty();
+  });
+
+  // Search + "guide me there".
+  initSearch(() => searchItems, selectSearchResult);
+
+  // Tonight's highlights feed.
+  initHighlights(computeHighlights);
+
   // Mode toggle button
 const modeBtn = document.createElement("button");
 modeBtn.id = "mode-btn";
@@ -532,18 +783,20 @@ modeBtn.addEventListener("click", () => {
 
 canvas.addEventListener("click", (e) => {
   if (recentlyInteracted()) return; // ignore the click that ends a drag
+  currentTarget = null; // a manual tap takes over from any guided target
   const project = bodyProjectorForView(initCanvas(canvas));
   handleClick(e, canvas, project, lastStars, lastPlanets, lastSatellites, lastMoon, lastSun);
-  updateInfoPanel();
+  updateInfoPanel(observer);
   markDirty(); // selection changed → redraw the highlight ring
 });
 
 canvas.addEventListener("touchend", (e) => {
   e.preventDefault();
   if (recentlyInteracted()) return; // the pointer-up ending a pan/pinch isn't a tap
+  currentTarget = null;
   const project = bodyProjectorForView(initCanvas(canvas));
   handleClick(e, canvas, project, lastStars, lastPlanets, lastSatellites, lastMoon, lastSun);
-  updateInfoPanel();
+  updateInfoPanel(observer);
   markDirty();
 });
 

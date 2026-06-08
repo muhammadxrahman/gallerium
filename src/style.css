@@ -128,6 +128,12 @@ html, body {
 .ui-chip:active {
   transform: scale(0.97);
 }
+/* Highlights a control that's in a non-default state (e.g. time scrubbed off "live"). */
+.ui-chip-active {
+  background: rgba(108, 198, 255, 0.22);
+  border-color: rgba(108, 198, 255, 0.5);
+  color: #eaf6ff;
+}
 
 /* ---- Frosted panel (Layers menu) ---- */
 .ui-panel {

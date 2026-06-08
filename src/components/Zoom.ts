@@ -51,6 +51,16 @@ export function resetView(): void {
   viewVersion++;
 }
 
+// Center the view on a base (zoom=1, pan=0) screen point `(tx,ty)` at zoom `z`.
+// Solves x' = cx + panX + z·(tx − cx) = cx ⇒ panX = −z·(tx − cx). Used by "guide me
+// there" to bring a searched object to the middle of the dome.
+export function centerOn(tx: number, ty: number, cx: number, cy: number, z = 2.5): void {
+  zoom = clamp(z);
+  panX = -zoom * (tx - cx);
+  panY = -zoom * (ty - cy);
+  viewVersion++;
+}
+
 function clamp(z: number): number {
   return Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, z));
 }

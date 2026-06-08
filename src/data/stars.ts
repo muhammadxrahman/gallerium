@@ -18,6 +18,14 @@ const HYG_URLS = [
 const CACHE_KEY = "hyg-catalog";
 const CACHE_AGE_MS = 7 * 24 * 60 * 60 * 1000; // 1 week
 
+// Normalize a HYG `proper` value to a real name or undefined. HYG stores unnamed
+// stars as the quoted-empty string `""` (two literal quote chars), so a plain trim
+// leaves a truthy 2-char "name". Stripping quotes first collapses those to undefined
+// while keeping real names (incl. quoted multi-word ones like "Rigil Kentaurus").
+export function cleanProperName(raw: string | undefined): string | undefined {
+  return raw?.replace(/"/g, "").trim() || undefined;
+}
+
 // Only load stars visible to naked eye + a bit more
 const MAX_MAGNITUDE = 6.5;
 
@@ -52,7 +60,7 @@ export function parseCSV(raw: string): Star[] {
     const ra = parseFloat(cols[idx.ra]) * 15; // HYG stores RA in hours, convert to degrees
     const dec = parseFloat(cols[idx.dec]);
     const ci = parseFloat(cols[idx.ci]);
-    const name = cols[idx.proper]?.trim() || undefined;
+    const name = cleanProperName(cols[idx.proper]);
 
     if (isNaN(ra) || isNaN(dec)) continue;
 

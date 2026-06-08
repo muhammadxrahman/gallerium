@@ -1,16 +1,31 @@
 import { state } from "../store/state";
+import { riseTransitSet, STD_ALT_STAR, STD_ALT_SUN } from "../astronomy/riseset";
+import { moonPhaseName } from "../astronomy/moon";
+import { getSkyTime } from "../utils/clock";
+import type { Observer } from "../astronomy/coordinates";
 
 let panel: HTMLDivElement | null = null;
 
-// Human-readable Moon phase from illuminated fraction + waxing/waning direction.
-function moonPhaseName(illumination: number, waxing: boolean): string {
-  if (illumination < 0.04) return "New Moon";
-  if (illumination > 0.96) return "Full Moon";
-  if (illumination > 0.46 && illumination < 0.54) {
-    return waxing ? "First Quarter" : "Last Quarter";
-  }
-  const shape = illumination < 0.5 ? "Crescent" : "Gibbous";
-  return `${waxing ? "Waxing" : "Waning"} ${shape}`;
+function clockStr(d: Date): string {
+  return d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+}
+
+// Rise/set rows for a fixed-ish body (skipped for fast satellites).
+// (moonPhaseName now lives in astronomy/moon.ts and is imported above.)
+function riseSetRows(
+  ra: number,
+  dec: number,
+  observer: Observer | null,
+  h0: number
+): Array<[string, string]> {
+  if (!observer) return [];
+  const r = riseTransitSet(ra, dec, observer, getSkyTime(), h0);
+  if (r.circumpolar) return [["Visibility", "Always up"]];
+  if (r.neverRises) return [["Visibility", "Below horizon"]];
+  const rows: Array<[string, string]> = [];
+  if (r.rise) rows.push(["Rises", clockStr(r.rise)]);
+  if (r.set) rows.push(["Sets", clockStr(r.set)]);
+  return rows;
 }
 
 const ACCENT: Record<string, string> = {
@@ -44,7 +59,7 @@ function card(type: string, name: string, stats: Array<[string, string]>): strin
   `;
 }
 
-export function updateInfoPanel(): void {
+export function updateInfoPanel(observer: Observer | null = null): void {
   if (!panel) return;
   const obj = state.selected;
 
@@ -61,6 +76,7 @@ export function updateInfoPanel(): void {
       ["Azimuth", `${s.az.toFixed(1)}°`],
       ["Magnitude", s.magnitude.toFixed(2)],
       ["Color index", s.colorIndex.toFixed(2)],
+      ...riseSetRows(s.ra, s.dec, observer, STD_ALT_STAR),
     ]);
   } else if (obj.type === "planet") {
     const p = obj.data;
@@ -69,12 +85,14 @@ export function updateInfoPanel(): void {
       ["Azimuth", `${p.az.toFixed(1)}°`],
       ["Magnitude", p.magnitude.toFixed(1)],
       ["Illumination", `${Math.round(p.phase * 100)}%`],
+      ...riseSetRows(p.ra, p.dec, observer, STD_ALT_STAR),
     ]);
   } else if (obj.type === "sun") {
     const s = obj.data;
     panel.innerHTML = card("SUN", "Sun", [
       ["Altitude", `${s.alt.toFixed(1)}°`],
       ["Azimuth", `${s.az.toFixed(1)}°`],
+      ...riseSetRows(s.ra, s.dec, observer, STD_ALT_SUN),
     ]);
   } else if (obj.type === "moon") {
     const m = obj.data;
@@ -83,6 +101,7 @@ export function updateInfoPanel(): void {
       ["Azimuth", `${m.az.toFixed(1)}°`],
       ["Illumination", `${Math.round(m.illumination * 100)}%`],
       ["Phase", moonPhaseName(m.illumination, m.waxing)],
+      ...riseSetRows(m.ra, m.dec, observer, STD_ALT_STAR),
     ]);
   } else if (obj.type === "satellite") {
     const s = obj.data;

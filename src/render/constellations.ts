@@ -9,6 +9,11 @@ interface ConstellationData {
 
 const data = rawData as ConstellationData;
 
+// Constellation names with a representative RA/Dec — for the search index.
+export function constellationNames(): Array<{ n: string; ra: number; dec: number }> {
+  return data.names;
+}
+
 // Faint joining lines between stars. Segments are only drawn when both endpoints
 // project (so lines break cleanly at the horizon / field-of-view edge).
 export function renderConstellationLines(
