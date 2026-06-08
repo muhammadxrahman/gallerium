@@ -13,11 +13,18 @@ export function initCanvas(canvas: HTMLCanvasElement): RenderContext {
   const width = canvas.clientWidth;
   const height = canvas.clientHeight;
 
-  // Handle retina/high-DPI screens
+  // Handle retina/high-DPI screens. Only resize the backing store when it
+  // actually changed — assigning canvas.width/height reallocates and clears the
+  // buffer, so doing it every frame is a needless drain. setTransform applies the
+  // DPR scale idempotently (unlike scale(), which would compound each call).
   const dpr = window.devicePixelRatio || 1;
-  canvas.width = width * dpr;
-  canvas.height = height * dpr;
-  ctx.scale(dpr, dpr);
+  const backingW = Math.round(width * dpr);
+  const backingH = Math.round(height * dpr);
+  if (canvas.width !== backingW || canvas.height !== backingH) {
+    canvas.width = backingW;
+    canvas.height = backingH;
+  }
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
   return {
     canvas,

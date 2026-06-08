@@ -10,6 +10,7 @@ let zoom = 1;
 let panX = 0;
 let panY = 0;
 let gestureEndedAt = 0;
+let viewVersion = 0; // bumps on any zoom/pan change so the render loop redraws
 
 // pinch state
 let pinching = false;
@@ -32,6 +33,11 @@ export function getPan(): { x: number; y: number } {
   return { x: panX, y: panY };
 }
 
+// Monotonic counter the render loop polls to detect zoom/pan changes.
+export function getViewVersion(): number {
+  return viewVersion;
+}
+
 // True while a pan/pinch is active or just ended — lets the tap/click handler
 // ignore the pointer-up that ends a drag so it isn't treated as a selection.
 export function recentlyInteracted(): boolean {
@@ -42,6 +48,7 @@ export function resetView(): void {
   zoom = 1;
   panX = 0;
   panY = 0;
+  viewVersion++;
 }
 
 function clamp(z: number): number {
@@ -62,6 +69,7 @@ export function initZoom(canvas: HTMLCanvasElement): void {
     panX = (sx - cx) * (1 - k) + k * panX;
     panY = (sy - cy) * (1 - k) + k * panY;
     zoom = nz;
+    viewVersion++;
   };
 
   canvas.addEventListener(
@@ -93,6 +101,7 @@ export function initZoom(canvas: HTMLCanvasElement): void {
     dragMoved += Math.abs(e.clientX - dragPrevX) + Math.abs(e.clientY - dragPrevY);
     dragPrevX = e.clientX;
     dragPrevY = e.clientY;
+    viewVersion++;
   });
   window.addEventListener("mouseup", () => {
     if (!dragging) return;
@@ -137,6 +146,7 @@ export function initZoom(canvas: HTMLCanvasElement): void {
         panY += midY - pinchPrevY;
         pinchPrevX = midX;
         pinchPrevY = midY;
+        viewVersion++;
       } else if (dragging && e.touches.length === 1) {
         e.preventDefault();
         const t = e.touches[0];
@@ -145,6 +155,7 @@ export function initZoom(canvas: HTMLCanvasElement): void {
         dragMoved += Math.abs(t.clientX - dragPrevX) + Math.abs(t.clientY - dragPrevY);
         dragPrevX = t.clientX;
         dragPrevY = t.clientY;
+        viewVersion++;
       }
     },
     { passive: false }

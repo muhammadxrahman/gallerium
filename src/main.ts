@@ -18,7 +18,7 @@ import { getAllPlanets } from "./astronomy/planets";
 import { getVisibleSatellites } from "./astronomy/satellites";
 import { requestLocation, cachedLocation, saveLocation } from "./utils/geo";
 import { initLocationControl } from "./components/LocationControl";
-import { initZoom, getZoom, getPan, recentlyInteracted } from "./components/Zoom";
+import { initZoom, getZoom, getPan, getViewVersion, recentlyInteracted } from "./components/Zoom";
 import type { Observer } from "./astronomy/coordinates";
 import { getMoonPosition } from "./astronomy/moon";
 import { getSunPosition } from "./astronomy/sun";
@@ -159,90 +159,128 @@ function renderSkyView(
   rc.ctx.textAlign = "left";
 }
 
-// --- Main render loop ---
-function renderFrame() {
+// --- Render loop: throttled compute + draw-on-change ---
+// The sky rotates ~0.004°/sec, so recomputing ~9k star positions every animation
+// frame is pure waste. We recompute on a cadence (each computation still exact for
+// its timestamp) and only redraw when something actually changed: new positions,
+// orientation, zoom/pan, selection, or resize. An idle map view then sits near
+// 1 fps instead of pinning a core at 60 fps.
+const BODIES_INTERVAL_MS = 1000; // stars, planets, Moon, Sun — all slow movers
+const SAT_INTERVAL_MS = 250;     // satellites move fast (ISS up to ~1°/s)
+
+let lastBodiesAt = -Infinity;
+let lastSatAt = -Infinity;
+let needsRedraw = true;
+let lastViewVersion = -1;
+let lastOriAz = NaN;
+let lastOriAlt = NaN;
+
+function markDirty(): void {
+  needsRedraw = true;
+}
+
+// Force an immediate recompute on the next frame (e.g. after a location change).
+function invalidatePositions(): void {
+  lastBodiesAt = -Infinity;
+  lastSatAt = -Infinity;
+  needsRedraw = true;
+}
+
+function computeBodies(now: Date): void {
   if (!observer) return;
-
-  const rc = initCanvas(canvas);
-  const zoom = getZoom();
-  clearCanvas(rc);
-
-  const now = new Date();
   const lst = getLST(now, observer.longitude);
 
-  // Stars
-  const rendered: RenderedStar[] = starsData.map((star) => {
-    const { az, alt } = equatorialToHorizontal(
-      { ra: star.ra, dec: star.dec },
-      observer!,
-      lst
-    );
+  lastStars = starsData.map((star) => {
+    const { az, alt } = equatorialToHorizontal({ ra: star.ra, dec: star.dec }, observer!, lst);
     return { ...star, az, alt };
   });
 
-  // Planets
-  const planets = getAllPlanets(now);
-  const renderedPlanets: RenderedPlanet[] = planets.map((p) => {
-    const { az, alt } = equatorialToHorizontal(
-      { ra: p.ra, dec: p.dec },
-      observer!,
-      lst
-    );
+  lastPlanets = getAllPlanets(now).map((p) => {
+    const { az, alt } = equatorialToHorizontal({ ra: p.ra, dec: p.dec }, observer!, lst);
     return { ...p, az, alt };
   });
 
-  // Moon
   const moonPos = getMoonPosition(now);
-  const { az: moonAz, alt: moonAlt } = equatorialToHorizontal(
-    { ra: moonPos.ra, dec: moonPos.dec },
-    observer!,
-    lst
-  );
-  const renderedMoon: RenderedMoon = { ...moonPos, az: moonAz, alt: moonAlt };
+  const moon = equatorialToHorizontal({ ra: moonPos.ra, dec: moonPos.dec }, observer!, lst);
+  lastMoon = { ...moonPos, az: moon.az, alt: moon.alt };
 
-  // Sun
   const sunPos = getSunPosition(now);
-  const { az: sunAz, alt: sunAlt } = equatorialToHorizontal(
-    { ra: sunPos.ra, dec: sunPos.dec },
-    observer!,
-    lst
-  );
-  const renderedSun: RenderedSun = { ...sunPos, az: sunAz, alt: sunAlt };
+  const sun = equatorialToHorizontal({ ra: sunPos.ra, dec: sunPos.dec }, observer!, lst);
+  lastSun = { ...sunPos, az: sun.az, alt: sun.alt };
+}
 
-  // Satellites — use topocentric look angles computed against the observer.
-  // Satellites are near-field, so the geocentric RA/Dec → horizontal path used
-  // for stars/planets would be wildly off; getVisibleSatellites gives true az/alt.
-  const sats = getVisibleSatellites(tlesData, now, observer);
-  const renderedSats: RenderedSatellite[] = sats.map((s) => ({
+function computeSatellites(now: Date): void {
+  if (!observer) return;
+  // Topocentric look angles against the observer (satellites are near-field).
+  lastSatellites = getVisibleSatellites(tlesData, now, observer).map((s) => ({
     ...s,
     az: s.azimuth ?? 0,
     alt: s.elevationAngle ?? -90,
   }));
+}
 
-  lastStars = rendered;
-  lastPlanets = renderedPlanets;
-  lastSatellites = renderedSats;
-  lastMoon = renderedMoon;
-  lastSun = renderedSun;
+function draw(): void {
+  const rc = initCanvas(canvas);
+  clearCanvas(rc);
+  const zoom = getZoom();
 
   if (isSkyView && isListening()) {
     const fov = 90 / zoom; // narrower field of view = zoomed in
     const { azimuth, altitude } = getOrientation();
-    renderSkyView(rc, rendered, renderedPlanets, renderedSats, azimuth, altitude, fov);
-    renderMoon(rc, renderedMoon, true, azimuth, altitude, fov);
-    renderSun(rc, renderedSun, true, azimuth, altitude, fov);
+    renderSkyView(rc, lastStars, lastPlanets, lastSatellites, azimuth, altitude, fov);
+    if (lastMoon) renderMoon(rc, lastMoon, true, azimuth, altitude, fov);
+    if (lastSun) renderSun(rc, lastSun, true, azimuth, altitude, fov);
   } else {
     applyView(rc); // zoom + pan the dome
-    renderStars(rc, rendered);
-    renderPlanets(rc, renderedPlanets);
-    renderSatellites(rc, renderedSats);
-    renderMoon(rc, renderedMoon, false);
-    renderSun(rc, renderedSun, false);
+    renderStars(rc, lastStars);
+    renderPlanets(rc, lastPlanets);
+    renderSatellites(rc, lastSatellites);
+    if (lastMoon) renderMoon(rc, lastMoon, false);
+    if (lastSun) renderSun(rc, lastSun, false);
     renderCompass(rc);
   }
 
   updateInfoPanel();
-  requestAnimationFrame(renderFrame);
+}
+
+function loop(t: number): void {
+  if (observer) {
+    const now = new Date();
+
+    if (t - lastBodiesAt >= BODIES_INTERVAL_MS) {
+      computeBodies(now);
+      lastBodiesAt = t;
+      needsRedraw = true;
+    }
+    if (tlesData.length > 0 && t - lastSatAt >= SAT_INTERVAL_MS) {
+      computeSatellites(now);
+      lastSatAt = t;
+      needsRedraw = true;
+    }
+
+    // Zoom / pan changes
+    const vv = getViewVersion();
+    if (vv !== lastViewVersion) {
+      lastViewVersion = vv;
+      needsRedraw = true;
+    }
+
+    // Orientation drives the sky-view projection; redraw only when it moves.
+    if (isSkyView && isListening()) {
+      const o = getOrientation();
+      if (Math.abs(o.azimuth - lastOriAz) > 0.05 || Math.abs(o.altitude - lastOriAlt) > 0.05) {
+        lastOriAz = o.azimuth;
+        lastOriAlt = o.altitude;
+        needsRedraw = true;
+      }
+    }
+
+    if (needsRedraw) {
+      draw();
+      needsRedraw = false;
+    }
+  }
+  requestAnimationFrame(loop);
 }
 
 // --- Init ---
@@ -294,6 +332,7 @@ async function init() {
       observer = loc;
       saveLocation(loc);
       setStatus("");
+      invalidatePositions(); // new location → recompute everything next frame
     },
   });
 
@@ -322,10 +361,12 @@ modeBtn.addEventListener("click", () => {
     showPermissionPrompt(() => {
       isSkyView = true;
       modeBtn.textContent = "⊙ Map View";
+      markDirty(); // switching views changes what's drawn
     });
   } else {
     isSkyView = false;
     modeBtn.textContent = "⊕ Sky View";
+    markDirty();
   }
 });
 
@@ -347,7 +388,12 @@ canvas.addEventListener("touchend", (e) => {
   handleClick(e, rc, lastStars, lastPlanets, lastSatellites, lastMoon, lastSun);
   updateInfoPanel();
 });
-  renderFrame();
+
+  // Redraw when the viewport changes size.
+  window.addEventListener("resize", markDirty);
+  window.addEventListener("orientationchange", markDirty);
+
+  requestAnimationFrame(loop);
 }
 
 init();

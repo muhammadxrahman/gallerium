@@ -93,6 +93,20 @@ app *shell* (JS/CSS/HTML/icon) so the page loads with no network. IndexedDB cach
 resident and rarely navigate, so the default register-only flow never sees new deploys.
 On finding a new SW, autoUpdate activates it and reloads the page.
 
+**Render loop = throttled compute + draw-on-change** (main.ts). Computing alt/az for
+~9k stars is the expensive part and depends only on (time, observer), not on
+orientation/zoom/pan. So `computeBodies` runs on a cadence (1 s; stars/planets/Moon/Sun
+are slow) and `computeSatellites` faster (250 ms; ISS moves ~1°/s) — each computation is
+still exact for its timestamp, no precision loss. `draw()` runs only when a `needsRedraw`
+flag is set: a compute tick, a zoom/pan change (polled via `getViewVersion()`), an
+orientation move (epsilon-gated), a selection, a view toggle, or a resize. An idle map
+view sits near 1 fps instead of 60. To force a recompute (e.g. location change) call
+`invalidatePositions()`; to force a redraw call `markDirty()`.
+
+**initCanvas only reallocates on size change.** Assigning `canvas.width/height`
+reallocates+clears the backing store, so it's guarded behind a size check; the DPR scale
+uses `setTransform` (idempotent), not `scale` (which would compound each frame).
+
 **Zoom + pan** live in components/Zoom.ts (wheel, mouse-drag, pinch, 1-finger drag;
 double-click/tap resets). Zoom is anchored at the cursor/pinch point so any region can be
 brought into focus. Map view applies both via `applyView(rc)` in main.ts (`rc.radius *=
