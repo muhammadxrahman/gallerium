@@ -3,7 +3,17 @@ name: CI & Deploy
 on:
   push:
     branches: [main]
+    # Skip docs-only pushes (README, screenshots, license) — they can't change the
+    # built site, so there's nothing to deploy. Code/config/asset changes still run.
+    paths-ignore:
+      - 'docs/**'
+      - '**/*.md'
+      - 'LICENSE'
   pull_request:
+    paths-ignore:
+      - 'docs/**'
+      - '**/*.md'
+      - 'LICENSE'
   workflow_dispatch: # lets you trigger a deploy by hand from the Actions tab
 
 # Allow the deploy job to publish to GitHub Pages via OIDC.
