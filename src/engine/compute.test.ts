@@ -1,9 +1,16 @@
 import { describe, it, expect } from "vitest";
-import { precessCatalog, toApparentHorizontal, computeBodies, computeSatellites } from "./compute";
+import {
+  precessCatalog,
+  precessDeepSky,
+  toApparentHorizontal,
+  computeBodies,
+  computeSatellites,
+} from "./compute";
 import { parseTLEs } from "../astronomy/satellites";
 import { equatorialToHorizontal } from "../astronomy/coordinates";
 import { getLST } from "../astronomy/sidereal";
 import type { Star } from "../data/stars";
+import type { DeepSkyObject } from "../data/deepSky";
 
 const NYC = { latitude: 40.71, longitude: -74.006 };
 const DATE = new Date("2024-09-15T02:30:00Z"); // night over NYC
@@ -40,21 +47,49 @@ describe("toApparentHorizontal", () => {
 });
 
 describe("computeBodies", () => {
-  const sky = computeBodies([star(1, 100, 20, "Test")], NYC, DATE);
+  const dso: DeepSkyObject[] = [
+    { id: "M42", name: "Orion Nebula", ra: 83.82, dec: -5.39, magnitude: 4, kind: "nebula" },
+  ];
+  const sky = computeBodies([star(1, 100, 20, "Test")], NYC, DATE, dso);
 
   it("returns positioned bodies with an LST", () => {
     expect(sky.stars).toHaveLength(1);
     expect(sky.stars[0]).toHaveProperty("alt");
     expect(sky.stars[0]).toHaveProperty("az");
-    expect(sky.planets).toHaveLength(5);
+    expect(sky.planets).toHaveLength(7); // 5 naked-eye + Uranus + Neptune
     expect(sky.moon).not.toBeNull();
     expect(sky.sun).not.toBeNull();
     expect(sky.lst).toBeGreaterThanOrEqual(0);
     expect(sky.lst).toBeLessThan(360);
   });
 
+  it("positions deep-sky objects through the same horizontal pipeline as stars", () => {
+    expect(sky.deepSky).toHaveLength(1);
+    expect(sky.deepSky[0].id).toBe("M42");
+    expect(sky.deepSky[0]).toHaveProperty("alt");
+    expect(sky.deepSky[0]).toHaveProperty("az");
+  });
+
+  it("defaults deep-sky to empty when none are supplied", () => {
+    expect(computeBodies([], NYC, DATE).deepSky).toEqual([]);
+  });
+
   it("puts the Sun below the horizon at local night", () => {
     expect(sky.sun!.alt).toBeLessThan(0);
+  });
+});
+
+describe("precessDeepSky", () => {
+  it("precesses J2000 positions to the target epoch", () => {
+    const [out] = precessDeepSky(
+      [{ id: "M42", name: "Orion Nebula", ra: 83.82, dec: -5.39, magnitude: 4, kind: "nebula" }],
+      new Date("2050-01-01T12:00:00Z")
+    );
+    const moved = Math.hypot(out.ra - 83.82, out.dec - -5.39);
+    expect(moved).toBeGreaterThan(0.2); // precession shifts it by a fraction of a degree
+    expect(moved).toBeLessThan(1);
+    expect(out.id).toBe("M42"); // identity preserved
+    expect(out.kind).toBe("nebula");
   });
 });
 

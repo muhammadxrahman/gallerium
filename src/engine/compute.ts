@@ -12,21 +12,24 @@ import { topocentricCorrection } from "../astronomy/parallax";
 import { getMoonPosition } from "../astronomy/moon";
 import { getSunPosition } from "../astronomy/sun";
 import { cleanProperName, type Star } from "../data/stars";
+import type { DeepSkyObject } from "../data/deepSky";
 import type { RenderedStar } from "../render/stars";
 import type { RenderedPlanet } from "../render/planets";
 import type { RenderedSatellite } from "../render/satellites";
 import type { RenderedMoon } from "../render/moon";
 import type { RenderedSun } from "../render/sun";
+import type { RenderedDeepSky } from "../render/deepSky";
 
 export interface SkyBodies {
   stars: RenderedStar[];
   planets: RenderedPlanet[];
+  deepSky: RenderedDeepSky[];
   moon: RenderedMoon | null;
   sun: RenderedSun | null;
   lst: number; // Local Sidereal Time (deg) at compute time — for projecting overlays
 }
 
-export const EMPTY_SKY: SkyBodies = { stars: [], planets: [], moon: null, sun: null, lst: 0 };
+export const EMPTY_SKY: SkyBodies = { stars: [], planets: [], deepSky: [], moon: null, sun: null, lst: 0 };
 
 // Precess the J2000 catalog to a given epoch and sanitize names (cached catalogs
 // parsed before the quote fix can carry a stray `""`).
@@ -34,6 +37,14 @@ export function precessCatalog(stars: Star[], epoch: Date): Star[] {
   return stars.map((s) => {
     const { ra, dec } = precessFromJ2000(s.ra, s.dec, epoch);
     return { ...s, ra, dec, name: cleanProperName(s.name) };
+  });
+}
+
+// Precess the deep-sky catalog (far-field objects, same J2000→date treatment as stars).
+export function precessDeepSky(objects: DeepSkyObject[], epoch: Date): DeepSkyObject[] {
+  return objects.map((o) => {
+    const { ra, dec } = precessFromJ2000(o.ra, o.dec, epoch);
+    return { ...o, ra, dec };
   });
 }
 
@@ -51,7 +62,8 @@ export function toApparentHorizontal(
 export function computeBodies(
   precessedStars: Star[],
   observer: Observer,
-  now: Date
+  now: Date,
+  precessedDeepSky: DeepSkyObject[] = []
 ): SkyBodies {
   const lst = getLST(now, observer.longitude);
 
@@ -63,6 +75,12 @@ export function computeBodies(
   const planets = getAllPlanets(now).map((p) => ({
     ...p,
     ...toApparentHorizontal(p.ra, p.dec, observer, lst),
+  }));
+
+  // Deep-sky: far-field fixed objects, same horizontal pipeline as stars.
+  const deepSky = precessedDeepSky.map((o) => ({
+    ...o,
+    ...toApparentHorizontal(o.ra, o.dec, observer, lst),
   }));
 
   // Moon: topocentric-parallax correction (up to ~1°) before going to the horizon.
@@ -81,7 +99,7 @@ export function computeBodies(
   const s = toApparentHorizontal(sunPos.ra, sunPos.dec, observer, lst);
   const sun: RenderedSun = { ...sunPos, az: s.az, alt: s.alt };
 
-  return { stars, planets, moon, sun, lst };
+  return { stars, planets, deepSky, moon, sun, lst };
 }
 
 // Satellites are only naked-eye visible when the observer is in darkness (Sun below

@@ -23,7 +23,7 @@ src/
 ├── astronomy/        # Pure math. No DOM, no rendering.
 │   ├── coordinates.ts    # RA/Dec → Alt/Az transform (equatorialToHorizontal)
 │   ├── sidereal.ts       # GMST, LST from system clock
-│   ├── planets.ts        # Keplerian orbital mechanics for 5 planets (VSOP87-lite)
+│   ├── planets.ts        # Keplerian orbital mechanics for 7 planets (VSOP87-lite)
 │   ├── moon.ts           # Meeus lunar theory + Earth–Moon distance (~2° accuracy)
 │   ├── sun.ts            # Meeus low-precision solar position (~0.01°)
 │   ├── refraction.ts     # Atmospheric refraction (Bennett): true → apparent altitude
@@ -36,11 +36,13 @@ src/
 ├── data/             # Data loading with IndexedDB caching
 │   ├── stars.ts          # HYG v4.1 catalog loader + CSV parser (skips Sun row id 0)
 │   ├── tles.ts           # CelesTrak TLE fetcher (GROUP=visual)
+│   ├── deepSky.ts        # Embedded Messier/Caldwell catalog (J2000, no fetch)
 │   └── constellations.json # d3-celestial line + name data (RA/Dec, embedded)
 ├── render/           # Canvas drawing. Takes computed positions, draws them.
 │   ├── canvas.ts         # RenderContext, EqProjector, altAzToXY, altAzToXYPointed
 │   ├── sky.ts            # Day/night gradient, twilight glow, ground; star-visibility
 │   ├── stars.ts          # Star dots with B-V color index + magnitude sizing
+│   ├── deepSky.ts        # Deep-sky glyphs per kind (galaxy/cluster/nebula) + labels
 │   ├── planets.ts        # Planet dots with glow + labels
 │   ├── satellites.ts     # Satellite dots, ISS highlighted
 │   ├── moon.ts           # Moon disc with phase terminator + glow
@@ -50,7 +52,7 @@ src/
 │   ├── milkyway.ts       # Additive soft-blob galactic band
 │   └── labels.ts         # Frame-scoped label declutterer (drawLabel)
 ├── components/       # DOM, device APIs, user interaction
-│   ├── InfoPanel.ts      # Tap-to-identify overlay (stars, planets, Moon, satellites)
+│   ├── InfoPanel.ts      # Tap-to-identify overlay (stars, planets, deep-sky, Moon, satellites)
 │   ├── HitDetection.ts   # Click/touch → nearest object
 │   ├── Orientation.ts    # DeviceOrientationEvent → azimuth/altitude (iOS webkitCompassHeading)
 │   ├── pose.ts           # Pure device(α,β,γ) → alt/az via rotation matrix (tested)
@@ -110,8 +112,10 @@ in two closures built per frame:
 
 Map uses `altAzToXY` (dome), AR uses gnomonic `altAzToXYPointed`; both return null below the
 horizon / outside the FOV. Render stays free of astronomy math. Draw order: sky background →
-Milky Way → grid+meridian → ecliptic → constellation lines → stars → satellites → planets →
-Moon → Sun → constellation names → (AR: HUD | map: selection ring + compass). Call
+Milky Way → grid+meridian → ecliptic → constellation lines → deep-sky → stars → satellites →
+planets → Moon → Sun → constellation names → (AR: HUD | map: selection ring + compass).
+Deep-sky markers sit behind the stars; their (few, curated) labels are placed before the
+stars so the showpiece objects keep their names. Call
 `beginLabels()` once per draw; `drawLabel()` declutters in call order (bright objects win).
 
 **Data loading is resilient.** `utils/fetchWithFallback` tries mirrors in order, retries
@@ -210,10 +214,11 @@ the codebase**. Tiers: **P0** = next up, **P1** = soon, **P2** = later. Check it
 truth for what's left.
 
 ### Shipped
-- **Astronomy engine** — HYG stars; Sun/Moon/5 planets (Meeus + Kepler); SGP4 satellites.
-  All *apparent/topocentric*: refraction, precession, lunar parallax, planet magnitudes +
-  phase, satellite sunlit-visibility. Rise/set/transit/twilight + pass prediction.
-  Cross-checked vs Stellarium / JPL Horizons.
+- **Astronomy engine** — HYG stars; embedded Messier/Caldwell deep-sky catalog; Sun/Moon/7
+  planets incl. Uranus + Neptune (Meeus + Kepler); SGP4 satellites. All *apparent/topocentric*:
+  refraction, precession (stars + deep-sky), lunar parallax, planet magnitudes + phase,
+  satellite sunlit-visibility. Rise/set/transit/twilight + pass prediction. Cross-checked vs
+  Stellarium / JPL Horizons.
 - **Rendering** — Canvas-2D map dome + gnomonic AR view (one shared body path, two
   projectors); day/night sky, constellations + names, Milky Way, ecliptic/grid/meridian,
   planet glyphs (Saturn rings), diffraction spikes, label declutter, vignette/glow.
@@ -225,7 +230,7 @@ truth for what's left.
   location.
 - **UI / design** — consolidated bottom toolbar + settings sheet, SVG icon set (no emoji),
   design tokens + unified panel motion, loading overlay.
-- **Engineering** — TDD across astronomy/utils + engine orchestration (146 tests), CI
+- **Engineering** — TDD across astronomy/utils + engine orchestration (160 tests), CI
   (test + build on push). `main.ts` refactored into a tested `engine/` (SkyEngine + pure
   compute/search/highlights/scheduler/status modules) with a thin DOM coordinator.
 
@@ -246,7 +251,7 @@ truth for what's left.
   delegates all decisions to the tested engine.
 - [x] **Broaden tests beyond astronomy**: engine orchestration (`SkyEngine`), the render-loop
   scheduler (cadence + draw-on-change), idle-status logic, and search/guide target resolution
-  are all covered (146 tests). Caught a latent bug: the AR orientation redraw gate started
+  are all covered (160 tests). Caught a latent bug: the AR orientation redraw gate started
   at `NaN`, so `|x − NaN| > ε` was always false and it never fired — now first-sample-aware.
 - [ ] **Still thin on coverage**: data/cache layer (IndexedDB), and the DOM-bound bits of
   `main.ts` (draw, tap → hit-test wiring) remain untested.
@@ -254,8 +259,11 @@ truth for what's left.
   arcminute tolerances — turns "should be accurate" into proof.
 
 ### C. Content depth (P1)
-- [ ] Deep-sky objects (Messier / Caldwell) with positions + info.
-- [ ] Outer planets (Uranus / Neptune); optionally comets / bright asteroids.
+- [x] Deep-sky objects (Messier / Caldwell) — embedded J2000 catalog (`data/deepSky.ts`),
+  per-kind glyphs (`render/deepSky.ts`), tap-to-identify + search/guide, "Deep-sky" layer
+  toggle. Precessed like stars through the shared pipeline.
+- [x] Outer planets (Uranus / Neptune) — added to the Keplerian set with magnitude
+  coefficients; positions verified vs JPL Horizons. Optionally comets / bright asteroids next.
 - [ ] Observing list / favorites; shareable location+time+view URL; coordinate-display
   setting (alt-az vs RA/dec).
 
@@ -275,7 +283,7 @@ truth for what's left.
 
 ## Testing Approach
 
-TDD with Vitest (146 tests). Every astronomy module has a test file, plus the render
+TDD with Vitest (160 tests). Every astronomy module has a test file, plus the render
 projection (`render/canvas.test.ts`), hit detection (`components/HitDetection.test.ts`),
 the star/TLE parsers, `utils/fetchWithFallback.test.ts` (mirror fallback/retry, mocked
 `fetch`), and the orchestration engine: `SkyEngine` (load→locate→compute lifecycle),

@@ -4,6 +4,7 @@ import type { RenderedPlanet } from "../render/planets";
 import type { RenderedSatellite } from "../render/satellites";
 import type { RenderedMoon } from "../render/moon";
 import type { RenderedSun } from "../render/sun";
+import type { RenderedDeepSky } from "../render/deepSky";
 import { state, type SelectedObject } from "../store/state";
 
 const HIT_RADIUS = 12; // pixels
@@ -16,8 +17,8 @@ function dist(x1: number, y1: number, x2: number, y2: number): number {
 
 // Pure hit-test: given a canvas-local point, a projector, and the rendered objects,
 // return the selected object (or null). Priority is largest/brightest first: Sun,
-// Moon, planets, satellites, then stars (brightest first). `project` MUST be the
-// same projector the active view drew with (map dome or AR), so this works in both
+// Moon, planets, satellites, deep-sky, then stars (brightest first). `project` MUST be
+// the same projector the active view drew with (map dome or AR), so this works in both
 // views and stays aligned with zoom/pan/orientation.
 export function pickObject(
   x: number,
@@ -27,7 +28,8 @@ export function pickObject(
   planets: RenderedPlanet[],
   satellites: RenderedSatellite[],
   moon: RenderedMoon | null,
-  sun: RenderedSun | null
+  sun: RenderedSun | null,
+  deepSky: RenderedDeepSky[] = []
 ): SelectedObject {
   // Sun first — largest target.
   if (sun) {
@@ -54,6 +56,12 @@ export function pickObject(
     if (p && dist(x, y, p[0], p[1]) < HIT_RADIUS) return { type: "satellite", data: sat };
   }
 
+  // Deep-sky objects (named, often more interesting than a coincident faint star).
+  for (const d of deepSky) {
+    const p = project(d.alt, d.az);
+    if (p && dist(x, y, p[0], p[1]) < HIT_RADIUS) return { type: "deepsky", data: d };
+  }
+
   // Stars — prefer the brighter (lower-magnitude) one when several overlap.
   const sorted = [...stars].sort((a, b) => a.magnitude - b.magnitude);
   for (const star of sorted) {
@@ -72,7 +80,8 @@ export function handleClick(
   planets: RenderedPlanet[],
   satellites: RenderedSatellite[],
   moon: RenderedMoon | null,
-  sun: RenderedSun | null
+  sun: RenderedSun | null,
+  deepSky: RenderedDeepSky[] = []
 ): void {
   let clientX: number, clientY: number;
 
@@ -88,5 +97,5 @@ export function handleClick(
   const x = clientX - rect.left;
   const y = clientY - rect.top;
 
-  state.selected = pickObject(x, y, project, stars, planets, satellites, moon, sun);
+  state.selected = pickObject(x, y, project, stars, planets, satellites, moon, sun, deepSky);
 }

@@ -19,7 +19,8 @@ This constraint defines the engineering: spherical coordinate transforms, orbita
 
 | Feature | Description |
 |---|---|
-| Live sky | ~9,000 stars (HYG catalog), all 5 naked-eye planets, the Sun, the Moon with its computed phase, and visible satellites, positioned in real time. |
+| Live sky | ~9,000 stars (HYG catalog), 7 planets (the 5 naked-eye plus Uranus and Neptune), the Sun, the Moon with its computed phase, and visible satellites, positioned in real time. |
+| Deep-sky objects | An embedded Messier and Caldwell catalog (galaxies, nebulae, open and globular clusters) drawn with a distinct glyph per type, searchable and tappable for details. |
 | Two views | A top-down map dome, and an AR mode that uses the device orientation sensors to overlay the sky in the direction the phone is pointed. |
 | Satellite passes | SGP4 orbit propagation from live TLEs. A satellite is drawn only when it is sunlit and the observer's sky is dark, the conditions under which it is actually visible. |
 | Time control | Set any date and time to plan an observation or review a past sky. |
@@ -70,7 +71,8 @@ Stars, planets, the Moon, and the Sun all use this path, so reported positions a
 
 - Sun: Meeus low-precision solar theory.
 - Moon: Meeus lunar theory, plus a topocentric parallax correction (Meeus ch. 40), since the Moon is near enough that the observer's position on Earth shifts it by up to ~1°.
-- Planets: Keplerian elements (VSOP87-lite), including apparent magnitude and phase.
+- Planets: Keplerian elements (VSOP87-lite) for all 7 planets, including apparent magnitude and phase.
+- Deep-sky objects: a curated Messier and Caldwell catalog embedded as J2000 coordinates, precessed and projected through the same far-field pipeline as the stars.
 
 ### Satellites
 
@@ -173,6 +175,7 @@ To test AR mode on a phone, open the `https://192.168.x.x:5173` address the dev 
 |---|---|---|
 | Stars | [HYG database v4.1](https://github.com/astronexus/HYG-Database) | 1 week |
 | Satellites | [CelesTrak](https://celestrak.org/) visual group | 24 hours |
+| Deep-sky (Messier / Caldwell) | Embedded J2000 catalog | none (static) |
 | Planets, Moon, Sun | Computed on-device | real-time |
 
 ## License

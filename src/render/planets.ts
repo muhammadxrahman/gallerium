@@ -18,6 +18,8 @@ const PLANET_STYLE: Record<string, PlanetStyle> = {
   Mars:    { color: "#e0623a", highlight: "#ff9a6b", radius: 4 },
   Jupiter: { color: "#d3b68c", highlight: "#f3e2c2", radius: 6.5, bands: true },
   Saturn:  { color: "#e3cf9b", highlight: "#fff2cc", radius: 5, ring: true },
+  Uranus:  { color: "#a6d8df", highlight: "#d6f0f4", radius: 3.5 },
+  Neptune: { color: "#5b7fd4", highlight: "#9cb7ef", radius: 3.5 },
 };
 
 export interface RenderedPlanet extends Planet {

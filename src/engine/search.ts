@@ -3,6 +3,7 @@
 
 import { equatorialToHorizontal, type Observer } from "../astronomy/coordinates";
 import { cleanProperName, type Star } from "../data/stars";
+import { DEEP_SKY_KIND_LABEL, type DeepSkyObject } from "../data/deepSky";
 import type { SearchItem } from "../components/Search";
 import type { SelectedObject } from "../store/state";
 import type { SkyBodies } from "./compute";
@@ -12,9 +13,11 @@ export type TargetMeta =
   | { kind: "moon" }
   | { kind: "planet"; name: string }
   | { kind: "star"; id: number; label: string }
+  | { kind: "deepsky"; id: string; label: string }
   | { kind: "con"; label: string; ra: number; dec: number };
 
-export const PLANET_NAMES = ["Mercury", "Venus", "Mars", "Jupiter", "Saturn"];
+// The naked-eye planets plus the two outer (telescopic) planets, in distance order.
+export const PLANET_NAMES = ["Mercury", "Venus", "Mars", "Jupiter", "Saturn", "Uranus", "Neptune"];
 
 export interface SearchIndex {
   items: SearchItem[];
@@ -23,7 +26,8 @@ export interface SearchIndex {
 
 export function buildSearchIndex(
   precessedStars: Star[],
-  constellations: Array<{ n: string; ra: number; dec: number }>
+  constellations: Array<{ n: string; ra: number; dec: number }>,
+  deepSky: DeepSkyObject[] = []
 ): SearchIndex {
   const items: SearchItem[] = [];
   const meta = new Map<string, TargetMeta>();
@@ -38,6 +42,11 @@ export function buildSearchIndex(
   for (const s of precessedStars) {
     const label = cleanProperName(s.name);
     if (label) add(`star:${s.id}`, label, "Star", { kind: "star", id: s.id, label });
+  }
+  for (const o of deepSky) {
+    // Searchable by both the common name and the catalog id (e.g. "Andromeda" or "M31").
+    const label = o.name === o.id ? o.id : `${o.name} (${o.id})`;
+    add(`deepsky:${o.id}`, label, DEEP_SKY_KIND_LABEL[o.kind], { kind: "deepsky", id: o.id, label });
   }
   for (const c of constellations) {
     add(`con:${c.n}`, c.n, "Constellation", { kind: "con", label: c.n, ra: c.ra, dec: c.dec });
@@ -73,6 +82,10 @@ export function targetAltAz(
       const s = sky.stars.find((x) => x.id === meta.id);
       return s ? { alt: s.alt, az: s.az } : null;
     }
+    case "deepsky": {
+      const d = sky.deepSky.find((x) => x.id === meta.id);
+      return d ? { alt: d.alt, az: d.az } : null;
+    }
     case "con":
       return equatorialToHorizontal({ ra: meta.ra, dec: meta.dec }, observer, sky.lst);
   }
@@ -90,6 +103,10 @@ export function targetSelection(meta: TargetMeta, sky: SkyBodies): SelectedObjec
   if (meta.kind === "star") {
     const s = sky.stars.find((x) => x.id === meta.id);
     return s ? { type: "star", data: s } : null;
+  }
+  if (meta.kind === "deepsky") {
+    const d = sky.deepSky.find((x) => x.id === meta.id);
+    return d ? { type: "deepsky", data: d } : null;
   }
   return null;
 }

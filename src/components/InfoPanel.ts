@@ -2,6 +2,7 @@ import { state } from "../store/state";
 import { riseTransitSet, STD_ALT_STAR, STD_ALT_SUN } from "../astronomy/riseset";
 import { moonPhaseName } from "../astronomy/moon";
 import { getSkyTime } from "../utils/clock";
+import { DEEP_SKY_KIND_LABEL } from "../data/deepSky";
 import type { Observer } from "../astronomy/coordinates";
 
 let panel: HTMLDivElement | null = null;
@@ -34,6 +35,7 @@ const ACCENT: Record<string, string> = {
   MOON: "#fff3c4",
   SUN: "#ffd36b",
   SATELLITE: "#7cffb0",
+  "DEEP SKY": "#d6bfff",
 };
 
 export function initInfoPanel(): void {
@@ -109,6 +111,15 @@ export function updateInfoPanel(observer: Observer | null = null): void {
       ["Altitude", `${s.alt.toFixed(1)}°`],
       ["Azimuth", `${s.az.toFixed(1)}°`],
       ["Orbital height", `${s.altitude.toFixed(0)} km`],
+    ]);
+  } else if (obj.type === "deepsky") {
+    const d = obj.data;
+    panel.innerHTML = card("DEEP SKY", d.name === d.id ? d.id : `${d.name} (${d.id})`, [
+      ["Type", DEEP_SKY_KIND_LABEL[d.kind]],
+      ["Altitude", `${d.alt.toFixed(1)}°`],
+      ["Azimuth", `${d.az.toFixed(1)}°`],
+      ["Magnitude", d.magnitude.toFixed(1)],
+      ...riseSetRows(d.ra, d.dec, observer, STD_ALT_STAR),
     ]);
   }
 }

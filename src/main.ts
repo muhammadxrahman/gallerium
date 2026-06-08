@@ -14,6 +14,7 @@ import {
   type AltAzProjector,
 } from "./render/canvas";
 import { renderStars } from "./render/stars";
+import { renderDeepSky } from "./render/deepSky";
 import { renderPlanets } from "./render/planets";
 import { renderSatellites } from "./render/satellites";
 import { renderMoon } from "./render/moon";
@@ -267,7 +268,7 @@ function draw(): void {
   const rc = initCanvas(canvas);
   const zoom = getZoom();
   const layers = getLayers();
-  const { stars, planets, moon, sun } = engine.bodies;
+  const { stars, planets, deepSky, moon, sun } = engine.bodies;
   beginLabels();
 
   const sunAz = sun ? sun.az : 0;
@@ -305,6 +306,7 @@ function draw(): void {
   }
   if (layers.ecliptic) renderEcliptic(rc.ctx, project, ECLIPTIC, 1);
   if (layers.constellations) renderConstellationLines(rc.ctx, project, vis);
+  if (layers.deepSky) renderDeepSky(rc, deepSky, projectAltAz, vis);
 
   // Bodies — one path for both views.
   renderStars(rc, stars, projectAltAz, vis, magLimit);
@@ -459,8 +461,8 @@ async function init() {
   const onTap = (e: MouseEvent | TouchEvent) => {
     currentTarget = null; // a manual tap takes over from any guided target
     const project = bodyProjectorForView(initCanvas(canvas));
-    const { stars, planets, moon, sun } = engine.bodies;
-    handleClick(e, canvas, project, stars, planets, engine.satellites, moon, sun);
+    const { stars, planets, deepSky, moon, sun } = engine.bodies;
+    handleClick(e, canvas, project, stars, planets, engine.satellites, moon, sun, deepSky);
     updateInfoPanel(engine.observer);
     markDirty();
   };

@@ -6,6 +6,7 @@ import type { RenderedPlanet } from "../render/planets";
 import type { RenderedSatellite } from "../render/satellites";
 import type { RenderedMoon } from "../render/moon";
 import type { RenderedSun } from "../render/sun";
+import type { RenderedDeepSky } from "../render/deepSky";
 
 function rc(overrides: Partial<RenderContext> = {}): RenderContext {
   return { width: 400, height: 400, centerX: 200, centerY: 200, radius: 180, ...overrides } as RenderContext;
@@ -29,6 +30,9 @@ const moon = (alt: number, az: number): RenderedMoon => ({
   ra: 0, dec: 0, phase: 0.5, illumination: 0.5, waxing: true, distanceKm: 385000, az, alt,
 });
 const sun = (alt: number, az: number): RenderedSun => ({ ra: 0, dec: 0, az, alt });
+const dso = (alt: number, az: number, id = "M31"): RenderedDeepSky => ({
+  id, name: "Andromeda Galaxy", ra: 0, dec: 0, magnitude: 3.4, kind: "galaxy", az, alt,
+});
 
 function at(alt: number, az: number, context = rc()): [number, number] {
   return altAzToXY(alt, az, context);
@@ -78,6 +82,26 @@ describe("pickObject", () => {
       type: "star",
       data: bright,
     });
+  });
+
+  it("selects a deep-sky object clicked at its projected position", () => {
+    const d = dso(90, 0);
+    expect(pickObject(200, 200, proj(rc()), [], [], [], null, null, [d])).toEqual({
+      type: "deepsky",
+      data: d,
+    });
+  });
+
+  it("prefers a coincident planet over a deep-sky object (priority order)", () => {
+    const [x, y] = at(90, 0);
+    const result = pickObject(x, y, proj(rc()), [], [planet(90, 0)], [], null, null, [dso(90, 0)]);
+    expect(result?.type).toBe("planet");
+  });
+
+  it("prefers a deep-sky object over a coincident star", () => {
+    const [x, y] = at(90, 0);
+    const result = pickObject(x, y, proj(rc()), [star(90, 0, 3)], [], [], null, null, [dso(90, 0)]);
+    expect(result?.type).toBe("deepsky");
   });
 
   it("uses the projector geometry so zoom/pan keeps hits aligned with the render", () => {

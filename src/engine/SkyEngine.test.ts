@@ -43,7 +43,7 @@ describe("SkyEngine", () => {
       engine.setCatalog(CATALOG, EPOCH);
       expect(engine.hasStars()).toBe(true);
       const labels = engine.search.items.map((i) => i.label);
-      // Sun/Moon/5 planets are always present.
+      // Sun/Moon/7 planets are always present.
       expect(labels).toContain("Sun");
       expect(labels).toContain("Moon");
       expect(labels).toContain("Jupiter");
@@ -51,6 +51,9 @@ describe("SkyEngine", () => {
       expect(labels).toContain("Vega");
       expect(labels).not.toContain('""');
       expect(engine.search.items.filter((i) => i.id.startsWith("star:"))).toHaveLength(1);
+      // Outer planets and the deep-sky catalog are searchable.
+      expect(labels).toContain("Neptune");
+      expect(engine.search.items.some((i) => i.id === "deepsky:M31")).toBe(true);
     });
 
     it("reloading the catalog rebuilds (does not accumulate) the search index", () => {
@@ -89,7 +92,9 @@ describe("SkyEngine", () => {
       expect(engine.bodies.stars).toHaveLength(3);
       expect(engine.bodies.stars[0]).toHaveProperty("alt");
       expect(engine.bodies.stars[0]).toHaveProperty("az");
-      expect(engine.bodies.planets).toHaveLength(5);
+      expect(engine.bodies.planets).toHaveLength(7); // 5 naked-eye + Uranus + Neptune
+      expect(engine.bodies.deepSky.length).toBeGreaterThan(0); // static catalog positioned
+      expect(engine.bodies.deepSky[0]).toHaveProperty("alt");
       expect(engine.bodies.moon).not.toBeNull();
       expect(engine.bodies.sun).not.toBeNull();
       expect(engine.bodies.lst).toBeGreaterThanOrEqual(0);

@@ -6,10 +6,18 @@
 import type { Observer } from "../astronomy/coordinates";
 import type { TLE } from "../astronomy/satellites";
 import type { Star } from "../data/stars";
+import { DEEP_SKY, type DeepSkyObject } from "../data/deepSky";
 import type { RenderedSatellite } from "../render/satellites";
 import type { HighlightItem } from "../components/Highlights";
 import { constellationNames } from "../render/constellations";
-import { precessCatalog, computeBodies, computeSatellites, EMPTY_SKY, type SkyBodies } from "./compute";
+import {
+  precessCatalog,
+  precessDeepSky,
+  computeBodies,
+  computeSatellites,
+  EMPTY_SKY,
+  type SkyBodies,
+} from "./compute";
 import { buildSearchIndex, type SearchIndex } from "./search";
 import { computeHighlights } from "./highlights";
 
@@ -21,11 +29,15 @@ export class SkyEngine {
   search: SearchIndex = { items: [], meta: new Map() };
 
   private precessed: Star[] = [];
+  private precessedDeepSky: DeepSkyObject[] = [];
 
-  // Load (or refresh) the star catalog; precess to `epoch` and rebuild the search index.
+  // Load (or refresh) the star catalog; precess stars + the (static) deep-sky catalog
+  // to `epoch` and rebuild the search index. setCatalog is always called at startup, so
+  // the deep-sky layer is available even when the star fetch fails (offline).
   setCatalog(stars: Star[], epoch: Date): void {
     this.precessed = precessCatalog(stars, epoch);
-    this.search = buildSearchIndex(this.precessed, constellationNames());
+    this.precessedDeepSky = precessDeepSky(DEEP_SKY, epoch);
+    this.search = buildSearchIndex(this.precessed, constellationNames(), DEEP_SKY);
   }
 
   setTles(tles: TLE[]): void {
@@ -41,7 +53,9 @@ export class SkyEngine {
   }
 
   recomputeBodies(now: Date): void {
-    if (this.observer) this.bodies = computeBodies(this.precessed, this.observer, now);
+    if (this.observer) {
+      this.bodies = computeBodies(this.precessed, this.observer, now, this.precessedDeepSky);
+    }
   }
 
   recomputeSatellites(now: Date): void {

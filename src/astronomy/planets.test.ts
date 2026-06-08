@@ -23,9 +23,34 @@ describe("getPlanetPosition", () => {
     expect(mars.dec).toBeLessThan(0);
   });
 
-  it("returns all 5 planets", () => {
+  it("returns all 7 planets (5 naked-eye + Uranus + Neptune)", () => {
     const planets = getAllPlanets(date);
-    expect(planets).toHaveLength(5);
+    expect(planets).toHaveLength(7);
+    const names = planets.map((p) => p.name);
+    expect(names).toContain("Uranus");
+    expect(names).toContain("Neptune");
+  });
+
+  // Outer planets, cross-checked against JPL Horizons for 2024-01-01 00:00 UTC.
+  // Low-precision elements: tolerances are wide (correct region of sky).
+  it("places Uranus in Aries (RA ~44-50, Dec ~16-19) at mag ~5.7", () => {
+    const u = getPlanetPosition("Uranus", new Date("2024-01-01T00:00:00Z"));
+    expect(u.ra).toBeGreaterThan(44);
+    expect(u.ra).toBeLessThan(50);
+    expect(u.dec).toBeGreaterThan(16);
+    expect(u.dec).toBeLessThan(19);
+    expect(u.magnitude).toBeGreaterThan(5);
+    expect(u.magnitude).toBeLessThan(6.5);
+  });
+
+  it("places Neptune in Pisces (RA ~353-358, Dec ~-2 to -4) at mag ~7.9", () => {
+    const n = getPlanetPosition("Neptune", new Date("2024-01-01T00:00:00Z"));
+    expect(n.ra).toBeGreaterThan(353);
+    expect(n.ra).toBeLessThan(358);
+    expect(n.dec).toBeGreaterThan(-4);
+    expect(n.dec).toBeLessThan(-2);
+    expect(n.magnitude).toBeGreaterThan(7.3);
+    expect(n.magnitude).toBeLessThan(8.5);
   });
 
   it("computes realistic apparent magnitudes (Venus brightest, ~-4)", () => {

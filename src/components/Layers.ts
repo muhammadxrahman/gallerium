@@ -5,6 +5,7 @@ export interface LayerState {
   grid: boolean;
   ecliptic: boolean;
   milkyway: boolean;
+  deepSky: boolean;
   magnitudeLimit: number; // hide stars fainter than this (light-pollution control)
 }
 
@@ -17,6 +18,7 @@ const DEFAULTS: LayerState = {
   grid: false,
   ecliptic: true,
   milkyway: true,
+  deepSky: true,
   magnitudeLimit: 6.5,
 };
 
@@ -61,6 +63,7 @@ const ROWS: Array<{ key: BoolKey; label: string }> = [
   { key: "daylight", label: "Daylight sky" },
   { key: "constellations", label: "Constellations" },
   { key: "constellationNames", label: "Constellation names" },
+  { key: "deepSky", label: "Deep-sky objects" },
   { key: "milkyway", label: "Milky Way" },
   { key: "ecliptic", label: "Ecliptic" },
   { key: "grid", label: "Grid & meridian" },
