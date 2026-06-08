@@ -1,4 +1,5 @@
 import { type RenderContext, altAzToXY, altAzToXYPointed } from "./canvas";
+import { drawLabel } from "./labels";
 import type { SunPosition } from "../astronomy/sun";
 
 export interface RenderedSun extends SunPosition {
@@ -44,7 +45,9 @@ export function renderSun(
   rc.ctx.fill();
 
   // Label
-  rc.ctx.fillStyle = "rgba(255, 240, 180, 0.9)";
-  rc.ctx.font = "12px sans-serif";
-  rc.ctx.fillText("Sun", x + radius + 4, y + 4);
+  drawLabel(rc.ctx, "Sun", x + radius + 4, y + 4, {
+    font: "12px ui-sans-serif, system-ui, sans-serif",
+    size: 12,
+    fill: "rgba(255, 240, 180, 0.95)",
+  });
 }

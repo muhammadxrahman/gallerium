@@ -1,4 +1,5 @@
 import { type RenderContext, altAzToXY, altAzToXYPointed } from "./canvas";
+import { drawLabel } from "./labels";
 import type { MoonPosition } from "../astronomy/moon";
 
 export interface RenderedMoon extends MoonPosition {
@@ -64,7 +65,9 @@ export function renderMoon(
   rc.ctx.fill();
 
   // Label
-  rc.ctx.fillStyle = "rgba(255, 248, 220, 0.85)";
-  rc.ctx.font = "12px sans-serif";
-  rc.ctx.fillText(`Moon ${Math.round(illumination * 100)}%`, x + radius + 4, y + 4);
+  drawLabel(rc.ctx, `Moon ${Math.round(illumination * 100)}%`, x + radius + 4, y + 4, {
+    font: "12px ui-sans-serif, system-ui, sans-serif",
+    size: 12,
+    fill: "rgba(255, 248, 220, 0.9)",
+  });
 }

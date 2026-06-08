@@ -26,23 +26,31 @@ src/
 │   ├── planets.ts        # Keplerian orbital mechanics for 5 planets (VSOP87-lite)
 │   ├── moon.ts           # Meeus lunar theory (~2° accuracy)
 │   ├── sun.ts            # Meeus low-precision solar position (~0.01°)
+│   ├── referenceLines.ts # Static geometry: ecliptic path + Milky Way (galactic) band
 │   └── satellites.ts     # SGP4 propagation via satellite.js@4.1.4
 ├── data/             # Data loading with IndexedDB caching
-│   ├── stars.ts          # HYG v4.1 catalog loader + CSV parser
-│   └── tles.ts           # CelesTrak TLE fetcher (GROUP=visual)
+│   ├── stars.ts          # HYG v4.1 catalog loader + CSV parser (skips Sun row id 0)
+│   ├── tles.ts           # CelesTrak TLE fetcher (GROUP=visual)
+│   └── constellations.json # d3-celestial line + name data (RA/Dec, embedded)
 ├── render/           # Canvas drawing. Takes computed positions, draws them.
-│   ├── canvas.ts         # RenderContext, altAzToXY, altAzToXYPointed, renderCompass
+│   ├── canvas.ts         # RenderContext, EqProjector, altAzToXY, altAzToXYPointed
+│   ├── sky.ts            # Day/night gradient, twilight glow, ground; star-visibility
 │   ├── stars.ts          # Star dots with B-V color index + magnitude sizing
 │   ├── planets.ts        # Planet dots with glow + labels
 │   ├── satellites.ts     # Satellite dots, ISS highlighted
 │   ├── moon.ts           # Moon disc with phase terminator + glow
-│   └── sun.ts            # Sun disc + glow (largest, brightest object)
+│   ├── sun.ts            # Sun disc + glow (largest, brightest object)
+│   ├── constellations.ts # Constellation lines + decluttered names
+│   ├── grid.ts           # Equatorial grid + ecliptic polylines
+│   ├── milkyway.ts       # Additive soft-blob galactic band
+│   └── labels.ts         # Frame-scoped label declutterer (drawLabel)
 ├── components/       # DOM, device APIs, user interaction
 │   ├── InfoPanel.ts      # Tap-to-identify overlay (stars, planets, Moon, satellites)
 │   ├── HitDetection.ts   # Click/touch → nearest object
 │   ├── Orientation.ts    # DeviceOrientationEvent → azimuth/altitude (iOS webkitCompassHeading)
 │   ├── PermissionPrompt.ts # iOS orientation permission flow
 │   ├── LocationControl.ts  # Manual lat/long entry + GPS re-request
+│   ├── Layers.ts         # Overlay toggles (constellations, grid, ecliptic, Milky Way) + daylight
 │   └── Zoom.ts           # Pinch + wheel zoom factor (shared by both views)
 ├── store/
 │   └── state.ts          # Shared selected object state
@@ -67,6 +75,21 @@ src/
 2. `getLST()` from sidereal.ts gives Local Sidereal Time
 3. `equatorialToHorizontal()` converts to Alt/Az for the observer
 4. `altAzToXY()` or `altAzToXYPointed()` converts to canvas pixels
+
+**Overlays use an `EqProjector`.** Constellations, grid, ecliptic, and the Milky Way are
+RA/Dec data. `main.ts` builds an `EqProjector = (ra,dec) => [x,y] | null` per view
+(composing `equatorialToHorizontal` with `altAzToXY` for map or `altAzToXYPointed` for AR,
+returning null below the horizon / outside the FOV) and passes it to the render modules,
+so render stays free of astronomy. `draw()` uses the last computed `lastLST`/`lastSun` so
+overlays align exactly with the throttled star positions. Draw order: sky background →
+Milky Way → grid → ecliptic → constellation lines → stars → satellites → planets → Moon →
+Sun → constellation names → selection ring → compass. Call `beginLabels()` once per draw;
+`drawLabel()` declutters in call order (bright objects first win).
+
+**Day/night.** `render/sky.ts` `skyTone(sunAlt)` interpolates sky colors and
+`starVisibility(sunAlt)` fades the star field. The "Daylight" toggle (a standalone button)
+drives this; when off, the sky is forced to night (`sunAlt = -90`) with full stars. Even
+when on, star visibility is floored (0.5) so stars never fully disappear in daylight.
 
 **Satellites bypass step 3.** They are near-field (LEO ~400 km vs Earth's ~6371 km
 radius), so geocentric RA/Dec run through `equatorialToHorizontal` is off by tens of
@@ -150,20 +173,25 @@ the single source of truth for what's left.
 - [x] iOS compass heading via `webkitCompassHeading`
 - [x] Tests for the hot paths: projection (`altAzToXY`/`altAzToXYPointed`), hit detection
   (`pickObject`), TLE parser edge cases — found no regressions
+- [x] Visual overhaul: day/night sky gradient + twilight + horizon glow (with a prominent
+  Daylight toggle; stars floored so they never vanish), constellation lines + names,
+  Milky Way band, ecliptic + equatorial grid (toggleable), label decluttering, on-canvas
+  selection ring, richer star rendering, modern frosted-glass UI chrome, SVG favicon
 
 ### Beautiful (visual fidelity & UX)
-- [ ] **P0** Day/night sky gradient + twilight bands driven by Sun altitude (sky must not
-  be black at noon); horizon glow. Also answers "is it dark enough to observe yet?"
-- [ ] **P0** Constellation lines + names (free Stellarium / d3-celestial dataset) — the
-  single biggest legibility + "feels like a real sky" win.
-- [ ] **P1** Horizon + ground reference; toggleable meridian / ecliptic / equatorial grid.
-- [ ] **P1** Label decluttering (collision avoidance — labels currently overlap).
-- [ ] **P1** On-canvas selection highlight (today only the DOM info panel reacts).
-- [ ] **P1** Milky Way band.
-- [ ] **P2** Richer star/planet rendering: magnitude→size+alpha curve, subtle glow/twinkle,
-  antialiasing; planet disks + Saturn rings; Moon earthshine/libration.
+- [x] **P0** Day/night sky gradient + twilight + horizon glow (Sun-altitude driven), with a
+  prominent Daylight on/off toggle and a star-brightness floor so stars never fully vanish.
+- [x] **P0** Constellation lines + names (d3-celestial dataset → `data/constellations.json`).
+- [x] **P1** Ground reference (AR horizon + ground); toggleable ecliptic + equatorial grid.
+  (Meridian line still TODO — small add.)
+- [x] **P1** Label decluttering via the shared `render/labels.ts` registry.
+- [x] **P1** On-canvas selection ring (`renderSelection` in main.ts).
+- [x] **P1** Milky Way band (`render/milkyway.ts`, galactic-plane samples).
+- [x] Modern frosted-glass UI chrome (`.ui-chip` / `.ui-panel`), SVG favicon.
+- [ ] **P2** Richer star/planet rendering: subtle twinkle, planet disks + Saturn rings,
+  Moon earthshine/libration. (Magnitude→size+alpha curve + bright-star glow done.)
 - [ ] **P2** First-run onboarding, real loading spinner (replace status string), smooth
-  map↔sky transition, polished chrome/theming.
+  map↔sky transition. (Meridian reference line fits here too.)
 - [ ] **P2** Light-pollution / limiting-magnitude (Bortle) slider.
 
 ### Accurate (physical correctness)

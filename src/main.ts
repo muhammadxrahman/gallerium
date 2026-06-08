@@ -4,24 +4,43 @@ import { showPermissionPrompt, } from "./components/PermissionPrompt";
 import { getOrientation, isListening } from "./components/Orientation";
 import { initInfoPanel, updateInfoPanel } from "./components/InfoPanel";
 import { handleClick } from "./components/HitDetection";
-import { initCanvas, clearCanvas, renderCompass, altAzToXYPointed, type RenderContext } from "./render/canvas";
+import {
+  initCanvas,
+  renderCompass,
+  altAzToXY,
+  altAzToXYPointed,
+  type RenderContext,
+  type EqProjector,
+} from "./render/canvas";
 import { renderStars, type RenderedStar } from "./render/stars";
 import { renderPlanets, type RenderedPlanet } from "./render/planets";
 import { renderSatellites, type RenderedSatellite } from "./render/satellites";
 import { renderMoon, type RenderedMoon } from "./render/moon";
 import { renderSun, type RenderedSun } from "./render/sun";
+import { renderSkyDome, renderSkyAR, starVisibility } from "./render/sky";
+import { renderConstellationLines, renderConstellationNames } from "./render/constellations";
+import { renderEquatorialGrid, renderEcliptic } from "./render/grid";
+import { renderMilkyWay } from "./render/milkyway";
+import { beginLabels, drawLabel } from "./render/labels";
 import { loadStars } from "./data/stars";
 import { loadTLEs } from "./data/tles";
 import { equatorialToHorizontal } from "./astronomy/coordinates";
 import { getLST } from "./astronomy/sidereal";
 import { getAllPlanets } from "./astronomy/planets";
 import { getVisibleSatellites } from "./astronomy/satellites";
+import { eclipticPath, milkyWayBand } from "./astronomy/referenceLines";
 import { requestLocation, cachedLocation, saveLocation } from "./utils/geo";
 import { initLocationControl } from "./components/LocationControl";
+import { initLayersControl, getLayers, setLayer } from "./components/Layers";
 import { initZoom, getZoom, getPan, getViewVersion, recentlyInteracted } from "./components/Zoom";
 import type { Observer } from "./astronomy/coordinates";
 import { getMoonPosition } from "./astronomy/moon";
 import { getSunPosition } from "./astronomy/sun";
+import { state } from "./store/state";
+
+// Static reference geometry, computed once.
+const ECLIPTIC = eclipticPath(2);
+const MILKYWAY = milkyWayBand();
 
 // --- State ---
 let observer: Observer | null = cachedLocation();
@@ -30,6 +49,7 @@ let lastPlanets: RenderedPlanet[] = [];
 let lastSatellites: RenderedSatellite[] = [];
 let lastMoon: RenderedMoon | null = null;
 let lastSun: RenderedSun | null = null;
+let lastLST = 0; // Local Sidereal Time (deg) from the last compute — used to project overlays
 let isSkyView = false;
 
 const canvas = document.getElementById("sky-canvas") as HTMLCanvasElement;
@@ -79,30 +99,38 @@ function renderSkyView(
   satellites: RenderedSatellite[],
   centerAz: number,
   centerAlt: number,
-  FOV: number // degrees visible at once (narrower = zoomed in)
+  FOV: number, // degrees visible at once (narrower = zoomed in)
+  visibility: number // 0..1 daylight fade for stars
 ): void {
-
   // Stars
-  for (const star of stars) {
-    const pos = altAzToXYPointed(star.alt, star.az, centerAlt, centerAz, FOV, rc);
-    if (!pos) continue;
-    const [x, y] = pos;
+  if (visibility > 0.01) {
+    for (const star of stars) {
+      if (star.alt < -0.5) continue;
+      const pos = altAzToXYPointed(star.alt, star.az, centerAlt, centerAz, FOV, rc);
+      if (!pos) continue;
+      const [x, y] = pos;
 
-    const radius = Math.max(0.5, 3.5 - star.magnitude * 0.5);
-    rc.ctx.fillStyle = "#ffffff";
-    rc.ctx.beginPath();
-    rc.ctx.arc(x, y, radius, 0, Math.PI * 2);
-    rc.ctx.fill();
+      const radius = Math.max(0.6, (6.5 - star.magnitude) * 0.45);
+      rc.ctx.globalAlpha = Math.max(0.35, Math.min(1, 1.15 - star.magnitude * 0.12)) * visibility;
+      rc.ctx.fillStyle = "#eef2ff";
+      rc.ctx.beginPath();
+      rc.ctx.arc(x, y, radius, 0, Math.PI * 2);
+      rc.ctx.fill();
+      rc.ctx.globalAlpha = 1;
 
-    if (star.name && star.magnitude < 2.5) {
-      rc.ctx.fillStyle = "rgba(255,255,255,0.7)";
-      rc.ctx.font = "11px sans-serif";
-      rc.ctx.fillText(star.name, x + radius + 3, y + 3);
+      if (star.name && star.magnitude < 2.0) {
+        drawLabel(rc.ctx, star.name, x + radius + 3, y + 3, {
+          font: "11px ui-sans-serif, system-ui, sans-serif",
+          size: 11,
+          fill: `rgba(220,228,255,${(0.8 * visibility).toFixed(3)})`,
+        });
+      }
     }
   }
 
   // Planets
   for (const planet of planets) {
+    if (planet.alt < -0.5) continue;
     const pos = altAzToXYPointed(planet.alt, planet.az, centerAlt, centerAz, FOV, rc);
     if (!pos) continue;
     const [x, y] = pos;
@@ -112,9 +140,11 @@ function renderSkyView(
     rc.ctx.arc(x, y, 5, 0, Math.PI * 2);
     rc.ctx.fill();
 
-    rc.ctx.fillStyle = "rgba(255,255,255,0.85)";
-    rc.ctx.font = "12px sans-serif";
-    rc.ctx.fillText(planet.name, x + 7, y + 4);
+    drawLabel(rc.ctx, planet.name, x + 7, y + 4, {
+      font: "12px ui-sans-serif, system-ui, sans-serif",
+      size: 12,
+      fill: "rgba(255,255,255,0.9)",
+    });
   }
 
   // Satellites
@@ -130,14 +160,16 @@ function renderSkyView(
     rc.ctx.fill();
 
     if (sat.name.includes("ISS")) {
-      rc.ctx.fillStyle = "rgba(0,255,136,0.9)";
-      rc.ctx.font = "bold 12px sans-serif";
-      rc.ctx.fillText("ISS", x + 6, y + 4);
+      drawLabel(rc.ctx, "ISS", x + 6, y + 4, {
+        font: "bold 12px ui-sans-serif, system-ui, sans-serif",
+        size: 12,
+        fill: "rgba(0,255,136,0.9)",
+      });
     }
   }
 
   // Crosshair at center
-  rc.ctx.strokeStyle = "rgba(255,255,255,0.2)";
+  rc.ctx.strokeStyle = "rgba(255,255,255,0.3)";
   rc.ctx.lineWidth = 1;
   rc.ctx.beginPath();
   rc.ctx.moveTo(rc.centerX - 15, rc.centerY);
@@ -148,8 +180,8 @@ function renderSkyView(
 
   // Compass heading display
   const { azimuth, altitude } = getOrientation();
-  rc.ctx.fillStyle = "rgba(255,255,255,0.5)";
-  rc.ctx.font = "12px sans-serif";
+  rc.ctx.fillStyle = "rgba(255,255,255,0.6)";
+  rc.ctx.font = "12px ui-sans-serif, system-ui, sans-serif";
   rc.ctx.textAlign = "center";
   rc.ctx.fillText(
     `Az ${azimuth.toFixed(0)}° · Alt ${altitude.toFixed(0)}°`,
@@ -157,6 +189,51 @@ function renderSkyView(
     rc.height - 20
   );
   rc.ctx.textAlign = "left";
+}
+
+// Build a coordinate projector for the active view: RA/Dec → screen pixels (or
+// null if it should not be drawn). Composes equatorialToHorizontal with the
+// view's projection, keeping render modules free of astronomy.
+function makeMapProjector(rc: RenderContext): EqProjector {
+  return (ra, dec) => {
+    const { az, alt } = equatorialToHorizontal({ ra, dec }, observer!, lastLST);
+    return alt < 0 ? null : altAzToXY(alt, az, rc);
+  };
+}
+
+function makeArProjector(
+  rc: RenderContext,
+  centerAlt: number,
+  centerAz: number,
+  fov: number
+): EqProjector {
+  return (ra, dec) => {
+    const { az, alt } = equatorialToHorizontal({ ra, dec }, observer!, lastLST);
+    if (alt < -0.5) return null; // below the horizon → hidden by the ground
+    return altAzToXYPointed(alt, az, centerAlt, centerAz, fov, rc);
+  };
+}
+
+// A clean ring + crosshair ticks marking the currently selected object (map view).
+function renderSelection(rc: RenderContext): void {
+  const sel = state.selected;
+  if (!sel) return;
+  const { alt, az } = sel.data;
+  if (alt < 0) return;
+  const [x, y] = altAzToXY(alt, az, rc);
+
+  rc.ctx.strokeStyle = "rgba(120, 220, 255, 0.9)";
+  rc.ctx.lineWidth = 1.5;
+  rc.ctx.beginPath();
+  rc.ctx.arc(x, y, 14, 0, Math.PI * 2);
+  rc.ctx.stroke();
+
+  rc.ctx.beginPath();
+  for (const [ux, uy] of [[0, -1], [0, 1], [-1, 0], [1, 0]] as const) {
+    rc.ctx.moveTo(x + ux * 18, y + uy * 18);
+    rc.ctx.lineTo(x + ux * 23, y + uy * 23);
+  }
+  rc.ctx.stroke();
 }
 
 // --- Render loop: throttled compute + draw-on-change ---
@@ -189,6 +266,7 @@ function invalidatePositions(): void {
 function computeBodies(now: Date): void {
   if (!observer) return;
   const lst = getLST(now, observer.longitude);
+  lastLST = lst;
 
   lastStars = starsData.map((star) => {
     const { az, alt } = equatorialToHorizontal({ ra: star.ra, dec: star.dec }, observer!, lst);
@@ -221,22 +299,61 @@ function computeSatellites(now: Date): void {
 
 function draw(): void {
   const rc = initCanvas(canvas);
-  clearCanvas(rc);
   const zoom = getZoom();
+  const layers = getLayers();
+  beginLabels();
+
+  const sunAz = lastSun ? lastSun.az : 0;
+  const trueSunAlt = lastSun ? lastSun.alt : -90;
+  // "Daylight sky" tints the sky and dims stars by the Sun's altitude. When off,
+  // the sky is always night-dark with full stars (classic planetarium). Even when
+  // on, stars are floored so they never fully vanish during the day — the app is
+  // for finding things, so you should always be able to see where they are.
+  const daylight = layers.daylight;
+  const sunAlt = daylight ? trueSunAlt : -90;
+  const vis = daylight ? Math.max(0.5, starVisibility(trueSunAlt)) : 1;
 
   if (isSkyView && isListening()) {
     const fov = 90 / zoom; // narrower field of view = zoomed in
     const { azimuth, altitude } = getOrientation();
-    renderSkyView(rc, lastStars, lastPlanets, lastSatellites, azimuth, altitude, fov);
+
+    // Sky + ground. Horizon is where alt=0 sits straight ahead.
+    const horizonY = rc.centerY + altitude * (Math.min(rc.width, rc.height) / fov);
+    renderSkyAR(rc, sunAlt, horizonY);
+
+    const project = makeArProjector(rc, altitude, azimuth, fov);
+    if (layers.milkyway) renderMilkyWay(rc.ctx, project, MILKYWAY, vis);
+    if (layers.grid) renderEquatorialGrid(rc.ctx, project, 1);
+    if (layers.ecliptic) renderEcliptic(rc.ctx, project, ECLIPTIC, 1);
+    if (layers.constellations) renderConstellationLines(rc.ctx, project, vis);
+
+    renderSkyView(rc, lastStars, lastPlanets, lastSatellites, azimuth, altitude, fov, vis);
     if (lastMoon) renderMoon(rc, lastMoon, true, azimuth, altitude, fov);
     if (lastSun) renderSun(rc, lastSun, true, azimuth, altitude, fov);
+
+    if (layers.constellations && layers.constellationNames) {
+      renderConstellationNames(rc.ctx, project, vis);
+    }
   } else {
     applyView(rc); // zoom + pan the dome
-    renderStars(rc, lastStars);
-    renderPlanets(rc, lastPlanets);
+    const project = makeMapProjector(rc);
+
+    renderSkyDome(rc, sunAlt, sunAz);
+    if (layers.milkyway) renderMilkyWay(rc.ctx, project, MILKYWAY, vis);
+    if (layers.grid) renderEquatorialGrid(rc.ctx, project, 1);
+    if (layers.ecliptic) renderEcliptic(rc.ctx, project, ECLIPTIC, 1);
+    if (layers.constellations) renderConstellationLines(rc.ctx, project, vis);
+
+    renderStars(rc, lastStars, vis);
     renderSatellites(rc, lastSatellites);
+    renderPlanets(rc, lastPlanets);
     if (lastMoon) renderMoon(rc, lastMoon, false);
     if (lastSun) renderSun(rc, lastSun, false);
+
+    if (layers.constellations && layers.constellationNames) {
+      renderConstellationNames(rc.ctx, project, vis);
+    }
+    renderSelection(rc);
     renderCompass(rc);
   }
 
@@ -336,24 +453,32 @@ async function init() {
     },
   });
 
+  // Prominent day/night toggle. Daylight tints the sky and dims stars by the Sun's
+  // altitude; turning it off gives a dark, star-filled sky at any time of day.
+  const dayBtn = document.createElement("button");
+  dayBtn.id = "day-btn";
+  dayBtn.className = "ui-chip";
+  dayBtn.style.cssText = "position:fixed;top:64px;left:16px;z-index:200;";
+  const syncDayBtn = () => {
+    dayBtn.textContent = getLayers().daylight ? "☀ Daylight" : "☾ Night sky";
+  };
+  syncDayBtn();
+  dayBtn.addEventListener("click", () => {
+    setLayer("daylight", !getLayers().daylight);
+    syncDayBtn();
+    markDirty();
+  });
+  document.body.appendChild(dayBtn);
+
+  // Layers toggle panel (constellations, Milky Way, ecliptic, grid).
+  initLayersControl(markDirty);
+
   // Mode toggle button
 const modeBtn = document.createElement("button");
 modeBtn.id = "mode-btn";
+modeBtn.className = "ui-chip";
 modeBtn.textContent = "⊕ Sky View";
-modeBtn.style.cssText = `
-  position: fixed;
-  top: 16px;
-  right: 16px;
-  background: rgba(255,255,255,0.1);
-  border: 1px solid rgba(255,255,255,0.25);
-  border-radius: 20px;
-  color: white;
-  font-size: 13px;
-  padding: 8px 16px;
-  cursor: pointer;
-  z-index: 200;
-  backdrop-filter: blur(8px);
-`;
+modeBtn.style.cssText = "position:fixed;top:16px;right:16px;z-index:200;";
 document.body.appendChild(modeBtn);
 
 modeBtn.addEventListener("click", () => {
@@ -378,6 +503,7 @@ canvas.addEventListener("click", (e) => {
   applyView(rc); // match the zoomed/panned render so hits line up
   handleClick(e, rc, lastStars, lastPlanets, lastSatellites, lastMoon, lastSun);
   updateInfoPanel();
+  markDirty(); // selection changed → redraw the highlight ring
 });
 
 canvas.addEventListener("touchend", (e) => {
@@ -387,6 +513,7 @@ canvas.addEventListener("touchend", (e) => {
   applyView(rc);
   handleClick(e, rc, lastStars, lastPlanets, lastSatellites, lastMoon, lastSun);
   updateInfoPanel();
+  markDirty();
 });
 
   // Redraw when the viewport changes size.

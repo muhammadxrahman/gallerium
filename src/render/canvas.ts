@@ -1,3 +1,9 @@
+// Projects a celestial coordinate (RA/Dec, degrees) to canvas pixels, or null when
+// it should not be drawn (below the horizon, or outside the AR field of view). The
+// orchestrator builds this by composing equatorialToHorizontal with the active
+// projection, so render modules stay free of astronomy math.
+export type EqProjector = (ra: number, dec: number) => [number, number] | null;
+
 export interface RenderContext {
   canvas: HTMLCanvasElement;
   ctx: CanvasRenderingContext2D;

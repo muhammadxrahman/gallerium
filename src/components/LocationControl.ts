@@ -18,21 +18,9 @@ function isValidLon(n: number): boolean {
 export function initLocationControl(opts: LocationControlOptions): void {
   const btn = document.createElement("button");
   btn.id = "location-btn";
+  btn.className = "ui-chip";
   btn.textContent = "📍 Location";
-  btn.style.cssText = `
-    position: fixed;
-    top: 16px;
-    left: 16px;
-    background: rgba(255,255,255,0.1);
-    border: 1px solid rgba(255,255,255,0.25);
-    border-radius: 20px;
-    color: white;
-    font-size: 13px;
-    padding: 8px 16px;
-    cursor: pointer;
-    z-index: 200;
-    backdrop-filter: blur(8px);
-  `;
+  btn.style.cssText = "position:fixed;top:16px;left:16px;z-index:200;";
   document.body.appendChild(btn);
 
   const overlay = document.createElement("div");

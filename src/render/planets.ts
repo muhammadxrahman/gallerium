@@ -1,4 +1,5 @@
 import { type RenderContext, altAzToXY, isVisible } from "./canvas";
+import { drawLabel } from "./labels";
 import type { Planet } from "../astronomy/planets";
 
 const PLANET_COLORS: Record<string, string> = {
@@ -41,9 +42,11 @@ export function renderPlanets(
     rc.ctx.arc(x, y, PLANET_RADIUS, 0, Math.PI * 2);
     rc.ctx.fill();
 
-    // Label
-    rc.ctx.fillStyle = "rgba(255,255,255,0.85)";
-    rc.ctx.font = "12px sans-serif";
-    rc.ctx.fillText(planet.name, x + PLANET_RADIUS + 4, y + 4);
+    // Label (decluttered, drawn over the field)
+    drawLabel(rc.ctx, planet.name, x + PLANET_RADIUS + 4, y + 4, {
+      font: "12px ui-sans-serif, system-ui, sans-serif",
+      size: 12,
+      fill: "rgba(255,255,255,0.9)",
+    });
   }
 }

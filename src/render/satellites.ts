@@ -1,4 +1,5 @@
 import { type RenderContext, altAzToXY } from "./canvas";
+import { drawLabel } from "./labels";
 import type { SatellitePosition } from "../astronomy/satellites";
 
 export interface RenderedSatellite extends SatellitePosition {
@@ -24,9 +25,11 @@ export function renderSatellites(
       rc.ctx.arc(x, y, 4, 0, Math.PI * 2);
       rc.ctx.fill();
 
-      rc.ctx.fillStyle = "rgba(0, 255, 136, 0.85)";
-      rc.ctx.font = "bold 12px sans-serif";
-      rc.ctx.fillText("ISS", x + 6, y + 4);
+      drawLabel(rc.ctx, "ISS", x + 6, y + 4, {
+        font: "bold 12px ui-sans-serif, system-ui, sans-serif",
+        size: 12,
+        fill: "rgba(0, 255, 136, 0.9)",
+      });
     } else {
       // Other satellites: smaller, more subtle
       rc.ctx.fillStyle = "rgba(0, 200, 100, 0.6)";
