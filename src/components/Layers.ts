@@ -67,8 +67,9 @@ const ROWS: Array<{ key: BoolKey; label: string }> = [
 ];
 
 // A small "Layers" button that opens a panel of toggles + a star-density slider.
-// onChange fires on any change so the caller can request a redraw.
-export function initLayersControl(onChange: () => void): void {
+// onChange fires on any change so the caller can request a redraw; onRefresh is
+// invoked by the "Refresh data" button.
+export function initLayersControl(onChange: () => void, onRefresh: () => void): void {
   const btn = document.createElement("button");
   btn.id = "layers-btn";
   btn.className = "ui-chip";
@@ -124,6 +125,14 @@ export function initLayersControl(onChange: () => void): void {
   sliderWrap.appendChild(sliderLabel);
   sliderWrap.appendChild(slider);
   panel.appendChild(sliderWrap);
+
+  // Manual data refresh (re-fetches star catalog + satellite TLEs, bypassing cache).
+  const refresh = document.createElement("button");
+  refresh.className = "ui-chip";
+  refresh.textContent = "↻ Refresh data";
+  refresh.style.cssText = "width:100%;margin-top:8px;justify-content:center;";
+  refresh.addEventListener("click", () => onRefresh());
+  panel.appendChild(refresh);
 
   document.body.appendChild(panel);
 

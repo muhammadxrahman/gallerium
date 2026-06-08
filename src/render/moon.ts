@@ -1,4 +1,4 @@
-import { type RenderContext, altAzToXY, altAzToXYPointed } from "./canvas";
+import { type RenderContext, type AltAzProjector } from "./canvas";
 import { drawLabel } from "./labels";
 import type { MoonPosition } from "../astronomy/moon";
 
@@ -10,21 +10,9 @@ export interface RenderedMoon extends MoonPosition {
 export function renderMoon(
   rc: RenderContext,
   moon: RenderedMoon,
-  pointed: boolean,
-  centerAz?: number,
-  centerAlt?: number,
-  fov?: number
+  project: AltAzProjector
 ): void {
-  let pos: [number, number] | null = null;
-
-  if (pointed && centerAz !== undefined && centerAlt !== undefined && fov !== undefined) {
-    pos = altAzToXYPointed(moon.alt, moon.az, centerAlt, centerAz, fov, rc);
-  } else {
-    if (moon.alt < 0) return;
-    const [x, y] = altAzToXY(moon.alt, moon.az, rc);
-    pos = [x, y];
-  }
-
+  const pos = project(moon.alt, moon.az);
   if (!pos) return;
   const [x, y] = pos;
 

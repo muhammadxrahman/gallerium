@@ -1,4 +1,4 @@
-import { type RenderContext, altAzToXY } from "./canvas";
+import { type RenderContext, type AltAzProjector } from "./canvas";
 import { drawLabel } from "./labels";
 import type { SatellitePosition } from "../astronomy/satellites";
 
@@ -9,13 +9,16 @@ export interface RenderedSatellite extends SatellitePosition {
 
 export function renderSatellites(
   rc: RenderContext,
-  satellites: RenderedSatellite[]
+  satellites: RenderedSatellite[],
+  project: AltAzProjector
 ): void {
   for (const sat of satellites) {
     // Only show satellites reasonably above the horizon
     if (sat.alt < 10) continue;
 
-    const [x, y] = altAzToXY(sat.alt, sat.az, rc);
+    const p = project(sat.alt, sat.az);
+    if (!p) continue;
+    const [x, y] = p;
     const isISS = sat.name.includes("ISS");
 
     if (isISS) {

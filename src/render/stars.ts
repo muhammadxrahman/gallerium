@@ -1,4 +1,4 @@
-import { type RenderContext, altAzToXY, isVisible } from "./canvas";
+import { type RenderContext, type AltAzProjector } from "./canvas";
 import { drawLabel } from "./labels";
 import type { Star } from "../data/stars";
 
@@ -58,9 +58,12 @@ function drawSpikes(
 
 // `visibility` (0..1) fades the whole field as daylight grows. `magLimit` hides
 // stars fainter than the chosen limiting magnitude (light-pollution control).
+// `project` maps alt/az to screen pixels (or null when it shouldn't be drawn), so
+// the same renderer serves both the map dome and the AR view.
 export function renderStars(
   rc: RenderContext,
   stars: RenderedStar[],
+  project: AltAzProjector,
   visibility = 1,
   magLimit = 6.5
 ): void {
@@ -68,9 +71,10 @@ export function renderStars(
 
   for (const star of stars) {
     if (star.magnitude > magLimit) continue;
-    if (!isVisible(star.alt)) continue;
+    const p = project(star.alt, star.az);
+    if (!p) continue;
 
-    const [x, y] = altAzToXY(star.alt, star.az, rc);
+    const [x, y] = p;
     const radius = starRadius(star.magnitude);
     const color = starColor(star.colorIndex);
     const alpha = starAlpha(star.magnitude) * visibility;
@@ -104,9 +108,10 @@ export function renderStars(
 
   // Labels for the brightest named stars (decluttered against everything else).
   for (const star of stars) {
-    if (star.magnitude > magLimit) continue;
-    if (!isVisible(star.alt) || !star.name || star.magnitude >= 2.0) continue;
-    const [x, y] = altAzToXY(star.alt, star.az, rc);
+    if (star.magnitude > magLimit || !star.name || star.magnitude >= 2.0) continue;
+    const p = project(star.alt, star.az);
+    if (!p) continue;
+    const [x, y] = p;
     const radius = starRadius(star.magnitude);
     drawLabel(rc.ctx, star.name, x + radius + 4, y + 3, {
       font: "11px ui-sans-serif, system-ui, sans-serif",

@@ -14,7 +14,7 @@ import {
   type AltAzProjector,
 } from "./render/canvas";
 import { renderStars, type RenderedStar } from "./render/stars";
-import { renderPlanets, drawPlanetBody, type RenderedPlanet } from "./render/planets";
+import { renderPlanets, type RenderedPlanet } from "./render/planets";
 import { renderSatellites, type RenderedSatellite } from "./render/satellites";
 import { renderMoon, type RenderedMoon } from "./render/moon";
 import { renderSun, type RenderedSun } from "./render/sun";
@@ -22,9 +22,9 @@ import { renderSkyDome, renderSkyAR, starVisibility } from "./render/sky";
 import { renderConstellationLines, renderConstellationNames } from "./render/constellations";
 import { renderEquatorialGrid, renderEcliptic, renderMeridian } from "./render/grid";
 import { renderMilkyWay } from "./render/milkyway";
-import { beginLabels, drawLabel } from "./render/labels";
+import { beginLabels } from "./render/labels";
 import { loadStars } from "./data/stars";
-import { loadTLEs } from "./data/tles";
+import { loadTLEs, getTleMeta } from "./data/tles";
 import { equatorialToHorizontal } from "./astronomy/coordinates";
 import { getLST } from "./astronomy/sidereal";
 import { getAllPlanets } from "./astronomy/planets";
@@ -106,80 +106,8 @@ registerSW({
   },
 });
 
-function renderSkyView(
-  rc: RenderContext,
-  stars: RenderedStar[],
-  planets: RenderedPlanet[],
-  satellites: RenderedSatellite[],
-  centerAz: number,
-  centerAlt: number,
-  FOV: number, // degrees visible at once (narrower = zoomed in)
-  visibility: number, // 0..1 daylight fade for stars
-  magLimit: number // limiting magnitude (light-pollution control)
-): void {
-  // Stars
-  if (visibility > 0.01) {
-    for (const star of stars) {
-      if (star.magnitude > magLimit) continue;
-      if (star.alt < -0.5) continue;
-      const pos = altAzToXYPointed(star.alt, star.az, centerAlt, centerAz, FOV, rc);
-      if (!pos) continue;
-      const [x, y] = pos;
-
-      const radius = Math.max(0.6, (6.5 - star.magnitude) * 0.45);
-      rc.ctx.globalAlpha = Math.max(0.35, Math.min(1, 1.15 - star.magnitude * 0.12)) * visibility;
-      rc.ctx.fillStyle = "#eef2ff";
-      rc.ctx.beginPath();
-      rc.ctx.arc(x, y, radius, 0, Math.PI * 2);
-      rc.ctx.fill();
-      rc.ctx.globalAlpha = 1;
-
-      if (star.name && star.magnitude < 2.0) {
-        drawLabel(rc.ctx, star.name, x + radius + 3, y + 3, {
-          font: "11px ui-sans-serif, system-ui, sans-serif",
-          size: 11,
-          fill: `rgba(220,228,255,${(0.8 * visibility).toFixed(3)})`,
-        });
-      }
-    }
-  }
-
-  // Planets
-  for (const planet of planets) {
-    if (planet.alt < -0.5) continue;
-    const pos = altAzToXYPointed(planet.alt, planet.az, centerAlt, centerAz, FOV, rc);
-    if (!pos) continue;
-    const [x, y] = pos;
-    const reach = drawPlanetBody(rc.ctx, x, y, planet.name);
-    drawLabel(rc.ctx, planet.name, x + reach + 5, y + 4, {
-      font: "12px ui-sans-serif, system-ui, sans-serif",
-      size: 12,
-      fill: "rgba(255,255,255,0.9)",
-    });
-  }
-
-  // Satellites
-  for (const sat of satellites) {
-    if (sat.alt < 10) continue;
-    const pos = altAzToXYPointed(sat.alt, sat.az, centerAlt, centerAz, FOV, rc);
-    if (!pos) continue;
-    const [x, y] = pos;
-
-    rc.ctx.fillStyle = "rgba(0, 255, 136, 0.8)";
-    rc.ctx.beginPath();
-    rc.ctx.arc(x, y, sat.name.includes("ISS") ? 4 : 2, 0, Math.PI * 2);
-    rc.ctx.fill();
-
-    if (sat.name.includes("ISS")) {
-      drawLabel(rc.ctx, "ISS", x + 6, y + 4, {
-        font: "bold 12px ui-sans-serif, system-ui, sans-serif",
-        size: 12,
-        fill: "rgba(0,255,136,0.9)",
-      });
-    }
-  }
-
-  // Crosshair at center
+// AR heads-up overlay: aiming crosshair + compass heading readout.
+function renderArHud(rc: RenderContext): void {
   rc.ctx.strokeStyle = "rgba(255,255,255,0.3)";
   rc.ctx.lineWidth = 1;
   rc.ctx.beginPath();
@@ -189,7 +117,6 @@ function renderSkyView(
   rc.ctx.lineTo(rc.centerX, rc.centerY + 15);
   rc.ctx.stroke();
 
-  // Compass heading display
   const { azimuth, altitude } = getOrientation();
   rc.ctx.fillStyle = "rgba(255,255,255,0.6)";
   rc.ctx.font = "12px ui-sans-serif, system-ui, sans-serif";
@@ -274,6 +201,34 @@ function invalidatePositions(): void {
   needsRedraw = true;
 }
 
+// Persistent status when idle: offline-degraded, stale-satellite warning, or clear.
+function idleStatus(): string {
+  if (starsData.length === 0 && tlesData.length === 0) {
+    return "Offline: showing planets & Moon only.";
+  }
+  const meta = getTleMeta();
+  if (meta.fromCache && meta.ageMs !== null) {
+    const days = meta.ageMs / 86_400_000;
+    if (days >= 3) return `Satellite data ${Math.round(days)} days old — Layers ▸ Refresh`;
+  }
+  return "";
+}
+
+// Manual data refresh: re-fetch star catalog + TLEs, bypassing the cache. Each
+// source is independent so one failing doesn't lose the other.
+async function refreshData(): Promise<void> {
+  setStatus("Refreshing data…");
+  const [stars, tles] = await Promise.allSettled([loadStars(true), loadTLEs(true)]);
+  if (stars.status === "fulfilled") starsData = stars.value;
+  if (tles.status === "fulfilled") tlesData = tles.value;
+  if (stars.status === "rejected" && tles.status === "rejected") {
+    setStatus("Couldn't refresh — check your connection.");
+  } else {
+    setStatus(idleStatus());
+  }
+  invalidatePositions();
+}
+
 function computeBodies(now: Date): void {
   if (!observer) return;
   const lst = getLST(now, observer.longitude);
@@ -325,55 +280,51 @@ function draw(): void {
   const vis = daylight ? Math.max(0.5, starVisibility(trueSunAlt)) : 1;
   const magLimit = layers.magnitudeLimit;
 
-  if (isSkyView && isListening()) {
+  // Pick the view's projectors. `project` (RA/Dec) drives the reference overlays;
+  // `projectAltAz` drives the bodies and the meridian. Everything below this point
+  // is a single shared draw path — map and AR differ only in these two functions.
+  const isAR = isSkyView && isListening();
+  let project: EqProjector;
+  let projectAltAz: AltAzProjector;
+
+  if (isAR) {
     const fov = 90 / zoom; // narrower field of view = zoomed in
     const { azimuth, altitude } = getOrientation();
-
-    // Sky + ground. Horizon is where alt=0 sits straight ahead.
     const horizonY = rc.centerY + altitude * (Math.min(rc.width, rc.height) / fov);
     renderSkyAR(rc, sunAlt, horizonY);
-
-    const project = makeArProjector(rc, altitude, azimuth, fov);
-    const projectAltAz: AltAzProjector = (alt, az) =>
+    project = makeArProjector(rc, altitude, azimuth, fov);
+    projectAltAz = (alt, az) =>
       alt < -0.5 ? null : altAzToXYPointed(alt, az, altitude, azimuth, fov, rc);
-    if (layers.milkyway) renderMilkyWay(rc.ctx, project, MILKYWAY, vis);
-    if (layers.grid) {
-      renderEquatorialGrid(rc.ctx, project, 1);
-      renderMeridian(rc.ctx, projectAltAz, 1);
-    }
-    if (layers.ecliptic) renderEcliptic(rc.ctx, project, ECLIPTIC, 1);
-    if (layers.constellations) renderConstellationLines(rc.ctx, project, vis);
-
-    renderSkyView(rc, lastStars, lastPlanets, lastSatellites, azimuth, altitude, fov, vis, magLimit);
-    if (lastMoon) renderMoon(rc, lastMoon, true, azimuth, altitude, fov);
-    if (lastSun) renderSun(rc, lastSun, true, azimuth, altitude, fov);
-
-    if (layers.constellations && layers.constellationNames) {
-      renderConstellationNames(rc.ctx, project, vis);
-    }
   } else {
     applyView(rc); // zoom + pan the dome
-    const project = makeMapProjector(rc);
-    const projectAltAz: AltAzProjector = (alt, az) => (alt < 0 ? null : altAzToXY(alt, az, rc));
-
     renderSkyDome(rc, sunAlt, sunAz);
-    if (layers.milkyway) renderMilkyWay(rc.ctx, project, MILKYWAY, vis);
-    if (layers.grid) {
-      renderEquatorialGrid(rc.ctx, project, 1);
-      renderMeridian(rc.ctx, projectAltAz, 1);
-    }
-    if (layers.ecliptic) renderEcliptic(rc.ctx, project, ECLIPTIC, 1);
-    if (layers.constellations) renderConstellationLines(rc.ctx, project, vis);
+    project = makeMapProjector(rc);
+    projectAltAz = (alt, az) => (alt < 0 ? null : altAzToXY(alt, az, rc));
+  }
 
-    renderStars(rc, lastStars, vis, magLimit);
-    renderSatellites(rc, lastSatellites);
-    renderPlanets(rc, lastPlanets);
-    if (lastMoon) renderMoon(rc, lastMoon, false);
-    if (lastSun) renderSun(rc, lastSun, false);
+  // Reference overlays.
+  if (layers.milkyway) renderMilkyWay(rc.ctx, project, MILKYWAY, vis);
+  if (layers.grid) {
+    renderEquatorialGrid(rc.ctx, project, 1);
+    renderMeridian(rc.ctx, projectAltAz, 1);
+  }
+  if (layers.ecliptic) renderEcliptic(rc.ctx, project, ECLIPTIC, 1);
+  if (layers.constellations) renderConstellationLines(rc.ctx, project, vis);
 
-    if (layers.constellations && layers.constellationNames) {
-      renderConstellationNames(rc.ctx, project, vis);
-    }
+  // Bodies — one path for both views.
+  renderStars(rc, lastStars, projectAltAz, vis, magLimit);
+  renderSatellites(rc, lastSatellites, projectAltAz);
+  renderPlanets(rc, lastPlanets, projectAltAz);
+  if (lastMoon) renderMoon(rc, lastMoon, projectAltAz);
+  if (lastSun) renderSun(rc, lastSun, projectAltAz);
+
+  if (layers.constellations && layers.constellationNames) {
+    renderConstellationNames(rc.ctx, project, vis);
+  }
+
+  if (isAR) {
+    renderArHud(rc);
+  } else {
     renderSelection(rc);
     renderCompass(rc);
   }
@@ -455,12 +406,7 @@ async function init() {
     }
   }
 
-  // Keep a persistent hint when running degraded; otherwise clear the status.
-  if (starsData.length === 0 && tlesData.length === 0) {
-    setStatus("Offline: showing planets & Moon only.");
-  } else {
-    setStatus("");
-  }
+  setStatus(idleStatus());
   initInfoPanel();
 
   // Manual location control — lets users pick any place on Earth and recover
@@ -492,8 +438,8 @@ async function init() {
   });
   document.body.appendChild(dayBtn);
 
-  // Layers toggle panel (constellations, Milky Way, ecliptic, grid).
-  initLayersControl(markDirty);
+  // Layers toggle panel (constellations, Milky Way, ecliptic, grid) + data refresh.
+  initLayersControl(markDirty, refreshData);
 
   // Mode toggle button
 const modeBtn = document.createElement("button");

@@ -1,4 +1,5 @@
 import { cacheGet, cacheSet } from "../utils/cache";
+import { fetchWithFallback } from "../utils/fetchWithFallback";
 
 export interface Star {
   id: number;
@@ -9,7 +10,11 @@ export interface Star {
   name?: string;    // only bright named stars have this
 }
 
-const HYG_URL = "https://raw.githubusercontent.com/astronexus/HYG-Database/main/hyg/CURRENT/hygdata_v41.csv";
+// Primary (GitHub raw) + jsDelivr CDN mirror of the same file, for resilience.
+const HYG_URLS = [
+  "https://raw.githubusercontent.com/astronexus/HYG-Database/main/hyg/CURRENT/hygdata_v41.csv",
+  "https://cdn.jsdelivr.net/gh/astronexus/HYG-Database@main/hyg/CURRENT/hygdata_v41.csv",
+];
 const CACHE_KEY = "hyg-catalog";
 const CACHE_AGE_MS = 7 * 24 * 60 * 60 * 1000; // 1 week
 
@@ -64,19 +69,19 @@ export function parseCSV(raw: string): Star[] {
   return stars;
 }
 
-export async function loadStars(): Promise<Star[]> {
-  // Try cache first, but don't let cache errors block loading
-  try {
-    const cached = await cacheGet<Star[]>(CACHE_KEY, CACHE_AGE_MS);
-    if (cached && cached.length > 0) return cached;
-  } catch (e) {
-    console.warn("Cache read failed, fetching fresh:", e);
+export async function loadStars(force = false): Promise<Star[]> {
+  // Try cache first (unless forcing a refresh), but don't let cache errors block.
+  if (!force) {
+    try {
+      const cached = await cacheGet<Star[]>(CACHE_KEY, CACHE_AGE_MS);
+      if (cached && cached.length > 0) return cached;
+    } catch (e) {
+      console.warn("Cache read failed, fetching fresh:", e);
+    }
   }
 
-  // Fetch fresh
-  const response = await fetch(HYG_URL);
-  if (!response.ok) throw new Error(`Failed to fetch star catalog: ${response.status}`);
-
+  // Fetch fresh, falling back across mirrors.
+  const response = await fetchWithFallback(HYG_URLS);
   const raw = await response.text();
   const stars = parseCSV(raw);
 

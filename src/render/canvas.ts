@@ -123,9 +123,12 @@ export function renderCompass(rc: RenderContext): void {
   rc.ctx.textBaseline = "alphabetic";
 }
 
-// Converts alt/az to x/y for a pointed view (AR mode)
-// centerAz/centerAlt is where the phone is pointing
-// fov is field of view in degrees
+// Converts alt/az to x/y for a pointed view (AR mode) via a true gnomonic
+// (pinhole-camera / tangent-plane) projection centered on centerAlt/centerAz.
+// This is the correct camera model: an object N degrees off-axis maps to
+// tan(N)·focal pixels from center, so spacing is right everywhere — including
+// near the zenith, where the old (Δaz, Δalt) approximation over-spread objects
+// because azimuth wasn't scaled by cos(alt). fov is the full field of view (deg).
 export function altAzToXYPointed(
   alt: number,
   az: number,
@@ -134,26 +137,32 @@ export function altAzToXYPointed(
   fov: number,
   rc: RenderContext
 ): [number, number] | null {
-  // Angular distance from center point
   const altRad = alt * (Math.PI / 180);
-  const azRad = az * (Math.PI / 180);
   const cAltRad = centerAlt * (Math.PI / 180);
-  const cAzRad = centerAz * (Math.PI / 180);
+  const dAz = (az - centerAz) * (Math.PI / 180);
 
-  const cosD =
+  // Cosine of the angular distance from the aim point.
+  const cosC =
     Math.sin(altRad) * Math.sin(cAltRad) +
-    Math.cos(altRad) * Math.cos(cAltRad) * Math.cos(azRad - cAzRad);
+    Math.cos(altRad) * Math.cos(cAltRad) * Math.cos(dAz);
 
-  const angDist = Math.acos(Math.max(-1, Math.min(1, cosD))) * (180 / Math.PI);
-  if (angDist > fov / 2) return null; // outside field of view
+  // Behind the camera (≥ 90° away): gnomonic projection diverges — drop it.
+  if (cosC <= 1e-6) return null;
 
-  // Project onto screen
-  const scale = Math.min(rc.width, rc.height) / fov;
-  const dAz = (az - centerAz + 540) % 360 - 180;
-  const dAlt = alt - centerAlt;
+  const angDist = Math.acos(Math.max(-1, Math.min(1, cosC))) * (180 / Math.PI);
+  if (angDist > fov / 2) return null; // outside the (circular) field of view
 
-  const x = rc.centerX + dAz * scale;
-  const y = rc.centerY - dAlt * scale;
+  // Tangent-plane coordinates (these are tan of the off-axis angle).
+  const xt = (Math.cos(altRad) * Math.sin(dAz)) / cosC;
+  const yt =
+    (Math.cos(cAltRad) * Math.sin(altRad) -
+      Math.sin(cAltRad) * Math.cos(altRad) * Math.cos(dAz)) /
+    cosC;
 
+  // Focal length so that an object at fov/2 off-axis lands at the screen edge.
+  const focal = (Math.min(rc.width, rc.height) / 2) / Math.tan((fov / 2) * (Math.PI / 180));
+
+  const x = rc.centerX + xt * focal;
+  const y = rc.centerY - yt * focal;
   return [x, y];
 }

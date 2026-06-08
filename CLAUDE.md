@@ -55,7 +55,8 @@ src/
 ├── store/
 │   └── state.ts          # Shared selected object state
 ├── utils/
-│   ├── cache.ts          # IndexedDB get/set/delete
+│   ├── cache.ts          # IndexedDB get/set/delete + cacheGetEntry (staleness)
+│   ├── fetchWithFallback.ts # Mirror fallback + retry + abort timeout (tested)
 │   ├── geo.ts            # Geolocation + localStorage persistence
 │   └── math.ts           # toRad, toDeg, normalizeAngle, clamp, lerp
 └── main.ts           # Orchestration: load → locate → render loop
@@ -76,15 +77,24 @@ src/
 3. `equatorialToHorizontal()` converts to Alt/Az for the observer
 4. `altAzToXY()` or `altAzToXYPointed()` converts to canvas pixels
 
-**Overlays use an `EqProjector`.** Constellations, grid, ecliptic, and the Milky Way are
-RA/Dec data. `main.ts` builds an `EqProjector = (ra,dec) => [x,y] | null` per view
-(composing `equatorialToHorizontal` with `altAzToXY` for map or `altAzToXYPointed` for AR,
-returning null below the horizon / outside the FOV) and passes it to the render modules,
-so render stays free of astronomy. `draw()` uses the last computed `lastLST`/`lastSun` so
-overlays align exactly with the throttled star positions. Draw order: sky background →
-Milky Way → grid → ecliptic → constellation lines → stars → satellites → planets → Moon →
-Sun → constellation names → selection ring → compass. Call `beginLabels()` once per draw;
-`drawLabel()` declutters in call order (bright objects first win).
+**One draw path, two projectors.** `draw()` is shared between map and AR; they differ only
+in two closures built per frame:
+- `EqProjector = (ra,dec) => [x,y] | null` — for RA/Dec overlays (constellations, grid,
+  ecliptic, Milky Way). Composes `equatorialToHorizontal` (using the last computed
+  `lastLST`, so overlays align with the throttled star positions) with the view projection.
+- `AltAzProjector = (alt,az) => [x,y] | null` — for the bodies (stars/planets/sats/Moon/Sun)
+  and the meridian. Every body renderer takes one; they no longer call `altAzToXY*` directly.
+
+Map uses `altAzToXY` (dome), AR uses gnomonic `altAzToXYPointed`; both return null below the
+horizon / outside the FOV. Render stays free of astronomy math. Draw order: sky background →
+Milky Way → grid+meridian → ecliptic → constellation lines → stars → satellites → planets →
+Moon → Sun → constellation names → (AR: HUD | map: selection ring + compass). Call
+`beginLabels()` once per draw; `drawLabel()` declutters in call order (bright objects win).
+
+**Data loading is resilient.** `utils/fetchWithFallback` tries mirrors in order, retries
+transient failures, and aborts hung requests via a timeout. Stars: GitHub-raw + jsDelivr;
+TLEs: CelesTrak .org + .com. `loadStars(force)`/`loadTLEs(force)` bypass the cache for the
+Layers ▸ "Refresh data" button. `getTleMeta()` exposes cache age for the stale-data warning.
 
 **Day/night.** `render/sky.ts` `skyTone(sunAlt)` interpolates sky colors and
 `starVisibility(sunAlt)` fades the star field. The "Daylight" toggle (a standalone button)
@@ -231,16 +241,15 @@ the single source of truth for what's left.
 - [x] **P0** Test the untested hot paths: projection (`altAzToXY` / `altAzToXYPointed`),
   hit detection (`pickObject`), TLE parser. Done — projection tests assert only
   model-agnostic invariants so they survive the gnomonic upgrade below.
-- [ ] **P1** Upgrade `altAzToXYPointed` to a true gnomonic (pinhole-camera) projection.
-  Today it places objects by raw (Δaz, Δalt) which over-spreads them near the zenith
-  (azimuth isn't scaled by cos(alt)). Correct but currently an approximation; fold into
-  the AR pose-model work so the camera model is right end-to-end.
-- [ ] **P1** Unify render paths: sky view re-implements star/planet/satellite drawing inline
-  in `main.ts` instead of reusing `render/*`. Move to one drawable path that takes a
-  projection function, so visual changes apply to both views at once.
-- [ ] **P1** Data robustness: source mirror/retry, manual "refresh data", TLE-staleness
-  indicator, surface fetch errors in the UI.
-- [ ] **P1** CI: GitHub Actions running `npm test` + `npm run build` on push.
+- [x] **P1** `altAzToXYPointed` is now a true gnomonic (pinhole-camera) projection —
+  off-axis offset scales as tan(angle)·focal, correct everywhere incl. the zenith. Tested.
+- [x] **P1** Unified render paths: every body renderer takes an `AltAzProjector`; `draw()`
+  has one shared body path and map vs AR differ only in the two projector closures.
+- [x] **P1** Data robustness: `fetchWithFallback` (mirrors + retry + abort timeout, tested),
+  HYG via GitHub-raw + jsDelivr mirror, CelesTrak .org/.com fallback, manual "Refresh data"
+  (Layers panel), stale-satellite warning (`getTleMeta`), fetch errors surfaced in status.
+- [x] **P1** CI: `.github/workflows/ci.yml` runs `npm ci` → `npm run test:run` → `npm run
+  build` (typecheck + build) on push/PR.
 - [ ] **P2** Layered canvases (static star layer @ ~1 fps + dynamic satellite layer) if
   profiling shows the full-scene redraw at the satellite cadence matters.
 - [ ] **P2** Smaller first load: ship a pre-trimmed mag ≤ 6.5 star JSON instead of fetching
@@ -254,14 +263,15 @@ the single source of truth for what's left.
 
 ## Testing Approach
 
-TDD with Vitest. Every astronomy module has a test file, plus the render projection
-(`render/canvas.test.ts`), hit detection (`components/HitDetection.test.ts`), and the
-star/TLE parsers. Ground truth for astronomy is cross-checked against Stellarium Web or
-JPL Horizons. Astronomy position tests use wide tolerances (±5°) — this is a visual app,
-not a navigation system ("places X in the correct region of the sky"). Pure geometry
-(projection, hit-testing) is tested exactly, but only via projection-model-agnostic
-invariants (zenith→center, cardinal directions, culling, up/down & east/west signs,
-azimuth wrap) so the tests survive a future gnomonic-projection upgrade.
+TDD with Vitest (58 tests). Every astronomy module has a test file, plus the render
+projection (`render/canvas.test.ts`), hit detection (`components/HitDetection.test.ts`),
+the star/TLE parsers, and `utils/fetchWithFallback.test.ts` (mirror fallback/retry, mocked
+`fetch`). Ground truth for astronomy is cross-checked against Stellarium Web or JPL
+Horizons. Astronomy position tests use wide tolerances (±5°) — this is a visual app, not a
+navigation system ("places X in the correct region of the sky"). Pure geometry is tested
+exactly: model-agnostic invariants (zenith→center, cardinal directions, culling, up/down &
+east/west signs, azimuth wrap) plus gnomonic-specific properties (fov/2 → screen edge,
+offset = tan(angle)·focal, behind-camera rejection).
 
 Hit detection's geometry lives in the pure `pickObject(x, y, rc, …)`; `handleClick` is a
 thin wrapper that extracts event coords and calls it. Test `pickObject`, not `handleClick`.

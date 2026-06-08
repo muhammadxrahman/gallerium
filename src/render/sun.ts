@@ -1,4 +1,4 @@
-import { type RenderContext, altAzToXY, altAzToXYPointed } from "./canvas";
+import { type RenderContext, type AltAzProjector } from "./canvas";
 import { drawLabel } from "./labels";
 import type { SunPosition } from "../astronomy/sun";
 
@@ -10,20 +10,9 @@ export interface RenderedSun extends SunPosition {
 export function renderSun(
   rc: RenderContext,
   sun: RenderedSun,
-  pointed: boolean,
-  centerAz?: number,
-  centerAlt?: number,
-  fov?: number
+  project: AltAzProjector
 ): void {
-  let pos: [number, number] | null = null;
-
-  if (pointed && centerAz !== undefined && centerAlt !== undefined && fov !== undefined) {
-    pos = altAzToXYPointed(sun.alt, sun.az, centerAlt, centerAz, fov, rc);
-  } else {
-    if (sun.alt < 0) return; // below the horizon
-    pos = altAzToXY(sun.alt, sun.az, rc);
-  }
-
+  const pos = project(sun.alt, sun.az);
   if (!pos) return;
   const [x, y] = pos;
 

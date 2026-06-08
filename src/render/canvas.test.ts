@@ -85,9 +85,25 @@ describe("altAzToXYPointed (AR / pointed projection)", () => {
   it("uses the shortest signed azimuth difference across the 0/360 wrap", () => {
     // aim at az 350, object at az 10 → 20° to the east (right), not 340° west
     const pos = altAzToXYPointed(0, 10, 0, 350, 90, rc())!;
-    expect(pos[0]).toBeGreaterThan(200);
-    // 20° east at scale 400/90 ≈ +88.9 px
-    expect(pos[0] - 200).toBeCloseTo((20 * 400) / 90, 4);
+    expect(pos[0]).toBeGreaterThan(200); // east → right (short way), not far left
+    expect(pos[1]).toBeCloseTo(200, 6);
+  });
+
+  it("is gnomonic: an object at fov/2 off-axis lands at the screen edge", () => {
+    // 45° to the side with a 90° FOV → exactly the right edge (x = 400).
+    const pos = altAzToXYPointed(0, 45, 0, 0, 90, rc())!;
+    expect(pos[0]).toBeCloseTo(400, 4);
+    expect(pos[1]).toBeCloseTo(200, 6);
+  });
+
+  it("is gnomonic: off-axis offset scales as tan(angle)·focal (not linearly)", () => {
+    // focal = (min(w,h)/2) / tan(45°) = 200. A 30° horizontal offset → tan30·200.
+    const pos = altAzToXYPointed(0, 30, 0, 0, 90, rc())!;
+    expect(pos[0] - 200).toBeCloseTo(Math.tan((30 * Math.PI) / 180) * 200, 4);
+  });
+
+  it("rejects points behind the camera (≥90° from the aim point)", () => {
+    expect(altAzToXYPointed(0, 100, 0, 0, 90, rc())).toBeNull();
   });
 });
 

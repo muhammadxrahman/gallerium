@@ -1,4 +1,4 @@
-import { type RenderContext, altAzToXY, isVisible } from "./canvas";
+import { type RenderContext, type AltAzProjector } from "./canvas";
 import { drawLabel } from "./labels";
 import type { Planet } from "../astronomy/planets";
 
@@ -118,10 +118,15 @@ export function drawPlanetBody(
   return st.ring ? r * 2.3 : r;
 }
 
-export function renderPlanets(rc: RenderContext, planets: RenderedPlanet[]): void {
+export function renderPlanets(
+  rc: RenderContext,
+  planets: RenderedPlanet[],
+  project: AltAzProjector
+): void {
   for (const planet of planets) {
-    if (!isVisible(planet.alt)) continue;
-    const [x, y] = altAzToXY(planet.alt, planet.az, rc);
+    const p = project(planet.alt, planet.az);
+    if (!p) continue;
+    const [x, y] = p;
     const reach = drawPlanetBody(rc.ctx, x, y, planet.name);
     drawLabel(rc.ctx, planet.name, x + reach + 5, y + 4, {
       font: "12px ui-sans-serif, system-ui, sans-serif",

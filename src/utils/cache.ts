@@ -49,6 +49,24 @@ export async function cacheGet<T>(
   });
 }
 
+// Returns the raw cached entry (value + write timestamp) regardless of age, or
+// null if absent. Used to surface data staleness (e.g. "satellite data is N days old").
+export async function cacheGetEntry<T>(
+  key: string
+): Promise<{ value: T; timestamp: number } | null> {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction("data", "readonly");
+    const request = tx.objectStore("data").get(key);
+    request.onsuccess = () => {
+      const record = request.result;
+      if (!record) return resolve(null);
+      resolve({ value: record.value as T, timestamp: record.timestamp });
+    };
+    request.onerror = () => reject(request.error);
+  });
+}
+
 export async function cacheDelete(key: string): Promise<void> {
   const db = await openDB();
   return new Promise((resolve, reject) => {
