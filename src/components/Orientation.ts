@@ -52,20 +52,33 @@ function handleOrientation(e: DeviceOrientationEvent): void {
   // beta: front-back tilt (-180 to 180)
   // gamma: left-right tilt (-90 to 90)
 
-  if (e.alpha === null || e.beta === null || e.gamma === null) return;
+  // Altitude needs beta; bail if it's unavailable.
+  if (e.beta === null) return;
 
-  // Compass heading — deviceorientationabsolute gives true north directly
-  // Regular deviceorientation alpha is arbitrary, but we use it as fallback
-  let azimuth = e.alpha;
+  // Compass heading. Two sources, two conventions:
+  //  - iOS Safari: webkitCompassHeading is degrees CLOCKWISE from true north.
+  //    (iOS `alpha` is relative to the device's startup orientation, NOT north,
+  //    so it must not be used as a heading.)
+  //  - deviceorientationabsolute (Android/desktop): alpha is degrees
+  //    COUNTERclockwise from north, so heading = 360 - alpha.
+  const compassHeading = (e as unknown as { webkitCompassHeading?: number })
+    .webkitCompassHeading;
+
+  let azimuth: number | null = null;
+  if (typeof compassHeading === "number" && !isNaN(compassHeading)) {
+    azimuth = compassHeading;
+  } else if (e.alpha !== null) {
+    azimuth = (360 - e.alpha) % 360;
+  }
+  if (azimuth === null) return; // no usable heading this frame
 
   // Convert phone tilt to sky altitude
   // When holding phone flat face up: beta~0, pointing at zenith
   // When holding phone vertical: beta~90, pointing at horizon
-  const beta = e.beta;
-  const altitude = 90 - Math.abs(beta);
+  const altitude = 90 - Math.abs(e.beta);
 
   orientation = {
-    azimuth: (360 - azimuth) % 360,
+    azimuth: ((azimuth % 360) + 360) % 360,
     altitude: Math.max(-90, Math.min(90, altitude)),
   };
 }

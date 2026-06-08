@@ -11,6 +11,7 @@ in real time from the user's location. No backend, no API keys, no hosting costs
 - **Bundler**: Vite
 - **Tests**: Vitest
 - **Rendering**: Canvas 2D (no Three.js, no WebGL)
+- **Offline/PWA**: vite-plugin-pwa (Workbox) — generates the service worker at build
 - **Deployment**: GitHub Pages via gh-pages
 
 ---
@@ -71,6 +72,14 @@ Newer versions ship a WASM/pthread build that breaks Vite's bundler.
 
 **Cache is IndexedDB via cache.ts.** Stars are cached for 1 week, TLEs for 24 hours.
 Cache failures are caught and logged as warnings — they never block data loading.
+
+**Offline is two layers.** The service worker (vite-plugin-pwa/Workbox) precaches the
+app *shell* (JS/CSS/HTML/icon) so the page loads with no network. IndexedDB caches the
+*data* (stars/TLEs). They are independent — never route catalog/TLE fetches through the SW.
+
+**Startup degrades gracefully.** `init()` loads stars and TLEs independently
+(`.catch(() => [])`); a failed fetch never aborts startup. Planets, Moon, and the compass
+are pure math and must always render, even fully offline with no cached data.
 
 ---
 

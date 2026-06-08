@@ -14,6 +14,7 @@ import { getLST } from "./astronomy/sidereal";
 import { getAllPlanets } from "./astronomy/planets";
 import { getVisibleSatellites } from "./astronomy/satellites";
 import { requestLocation, cachedLocation, saveLocation } from "./utils/geo";
+import { initLocationControl } from "./components/LocationControl";
 import type { Observer } from "./astronomy/coordinates";
 import { getMoonPosition, type MoonPosition } from "./astronomy/moon";
 
@@ -256,17 +257,25 @@ function renderFrame() {
 
 // --- Init ---
 async function init() {
+  // Each data source loads independently and never aborts startup.
+  // Planets, the Moon, and the compass are pure math (no network), so the sky
+  // must still render even if both network fetches fail (offline / CelesTrak down).
   setStatus("Loading star catalog...");
-  try {
-    starsData = await loadStars();
-    setStatus(`Loaded ${starsData.length} stars. Loading satellites...`);
-    tlesData = await loadTLEs();
-    setStatus(`Loaded ${tlesData.length} satellites.`);
-  } catch (e) {
-    setStatus("Failed to load data. Check your connection.");
-    console.error(e);
-    return;
-  }
+  starsData = await loadStars().catch((e) => {
+    console.error("Star catalog failed to load:", e);
+    return [];
+  });
+
+  setStatus(
+    starsData.length > 0
+      ? `Loaded ${starsData.length} stars. Loading satellites...`
+      : "Stars unavailable. Loading satellites..."
+  );
+
+  tlesData = await loadTLEs().catch((e) => {
+    console.error("Satellite TLEs failed to load:", e);
+    return [];
+  });
 
   if (!observer) {
     setStatus("Requesting location...");
@@ -279,8 +288,24 @@ async function init() {
     }
   }
 
-  setStatus("");
+  // Keep a persistent hint when running degraded; otherwise clear the status.
+  if (starsData.length === 0 && tlesData.length === 0) {
+    setStatus("Offline: showing planets & Moon only.");
+  } else {
+    setStatus("");
+  }
   initInfoPanel();
+
+  // Manual location control — lets users pick any place on Earth and recover
+  // from a denied geolocation prompt or a stale cached fix.
+  initLocationControl({
+    getCurrent: () => observer,
+    onChange: (loc) => {
+      observer = loc;
+      saveLocation(loc);
+      setStatus("");
+    },
+  });
 
   // Mode toggle button
 const modeBtn = document.createElement("button");
