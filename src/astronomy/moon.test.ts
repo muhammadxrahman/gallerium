@@ -30,6 +30,12 @@ describe("getMoonPosition", () => {
     expect(moon.illumination).toBeGreaterThan(0.9);
   });
 
+  it("reports a plausible Earth–Moon distance (356k–407k km)", () => {
+    const moon = getMoonPosition(date);
+    expect(moon.distanceKm).toBeGreaterThan(356000);
+    expect(moon.distanceKm).toBeLessThan(407000);
+  });
+
   it("reports waxing between new and full moon", () => {
     // New moon was 2024-01-11; the days after it are waxing toward full (01-25).
     const waxing = getMoonPosition(new Date("2024-01-18T00:00:00Z"));

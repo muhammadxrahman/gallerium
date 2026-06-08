@@ -2,8 +2,19 @@ export interface Planet {
   name: string;
   ra: number;  // degrees
   dec: number; // degrees
-  magnitude: number;
+  magnitude: number; // apparent visual magnitude
+  phase: number;     // illuminated fraction 0..1
 }
+
+// Apparent-magnitude coefficients (Astronomical Almanac): V = c0 + 5·log10(r·d)
+// + c1·α + c2·α² + c3·α², with phase angle α in degrees, r/d in AU.
+const MAG_COEFF: Record<string, [number, number, number, number]> = {
+  Mercury: [-0.6, 0.0498, -0.000488, 0.00000302],
+  Venus:   [-4.47, 0.0103, 0.000057, 0.00000013],
+  Mars:    [-1.52, 0.016, 0, 0],
+  Jupiter: [-9.4, 0.005, 0, 0],
+  Saturn:  [-8.88, 0, 0, 0], // ring contribution omitted
+};
 
 // Orbital elements at J2000.0 epoch
 // [a, e, i, L, longPeri, longNode]
@@ -135,7 +146,19 @@ export function getPlanetPosition(name: string, date: Date): Planet {
   const ra  = normalizeAngle(toDeg(Math.atan2(y, x)));
   const dec = toDeg(Math.asin(z / Math.sqrt(x * x + y * y + z * z)));
 
-  return { name, ra, dec, magnitude: 0 }; // magnitude placeholder for now
+  // Apparent magnitude + illuminated fraction from the Sun–planet–Earth triangle.
+  const r = Math.sqrt(px * px + py * py + pz * pz); // planet–Sun distance (AU)
+  const d = Math.sqrt(dx * dx + dy * dy + dz * dz); // planet–Earth distance (AU)
+  const sunEarth = Math.sqrt(ex * ex + ey * ey + ez * ez);
+  const cosPhase = Math.max(-1, Math.min(1, (r * r + d * d - sunEarth * sunEarth) / (2 * r * d)));
+  const alpha = toDeg(Math.acos(cosPhase)); // phase angle at the planet
+  const phase = (1 + cosPhase) / 2;
+
+  const c = MAG_COEFF[name] ?? [0, 0, 0, 0];
+  const magnitude =
+    c[0] + 5 * Math.log10(r * d) + c[1] * alpha + c[2] * alpha * alpha + c[3] * alpha * alpha * alpha;
+
+  return { name, ra, dec, magnitude, phase };
 }
 
 export function getAllPlanets(date: Date): Planet[] {

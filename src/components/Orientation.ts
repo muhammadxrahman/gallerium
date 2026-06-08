@@ -1,3 +1,5 @@
+import { poseToHorizontal } from "./pose";
+
 export interface DeviceOrientation {
   azimuth: number;  // compass heading, 0-360
   altitude: number; // tilt, -90 to 90
@@ -48,34 +50,32 @@ export function stopOrientationTracking(): void {
 }
 
 function handleOrientation(e: DeviceOrientationEvent): void {
-  // alpha: compass heading (0-360, 0=North)
-  // beta: front-back tilt (-180 to 180)
-  // gamma: left-right tilt (-90 to 90)
+  // alpha: rotation about Z (compass); beta: front-back tilt; gamma: left-right roll.
 
-  // Altitude needs beta; bail if it's unavailable.
+  // Altitude needs the tilt (beta); gamma defaults to 0 if the device omits it.
   if (e.beta === null) return;
+  const pose = poseToHorizontal({ alpha: e.alpha ?? 0, beta: e.beta, gamma: e.gamma ?? 0 });
 
-  // Compass heading. Two sources, two conventions:
+  // Altitude comes from the full rotation matrix — correct for overhead/behind and
+  // for roll, unlike the old `90 - |beta|`.
+  const altitude = pose.altitude;
+
+  // Azimuth (heading). Two sources, two conventions:
   //  - iOS Safari: webkitCompassHeading is degrees CLOCKWISE from true north.
-  //    (iOS `alpha` is relative to the device's startup orientation, NOT north,
-  //    so it must not be used as a heading.)
-  //  - deviceorientationabsolute (Android/desktop): alpha is degrees
-  //    COUNTERclockwise from north, so heading = 360 - alpha.
+  //    (iOS `alpha` is relative to the device's startup orientation, not north.)
+  //  - deviceorientationabsolute (Android/desktop): alpha is north-referenced, so
+  //    the rotation-matrix azimuth is already correct.
   const compassHeading = (e as unknown as { webkitCompassHeading?: number })
     .webkitCompassHeading;
 
-  let azimuth: number | null = null;
+  let azimuth: number;
   if (typeof compassHeading === "number" && !isNaN(compassHeading)) {
     azimuth = compassHeading;
   } else if (e.alpha !== null) {
-    azimuth = (360 - e.alpha) % 360;
+    azimuth = pose.azimuth;
+  } else {
+    azimuth = orientation.azimuth; // keep the last heading if none is available
   }
-  if (azimuth === null) return; // no usable heading this frame
-
-  // Convert phone tilt to sky altitude
-  // When holding phone flat face up: beta~0, pointing at zenith
-  // When holding phone vertical: beta~90, pointing at horizon
-  const altitude = 90 - Math.abs(e.beta);
 
   orientation = {
     azimuth: ((azimuth % 360) + 360) % 360,

@@ -8,6 +8,28 @@ export interface SatellitePosition {
   altitude: number; // km above Earth
   azimuth?: number;      // topocentric, degrees (only set when an observer is given)
   elevationAngle?: number; // topocentric altitude above horizon, degrees
+  sunlit?: boolean;        // lit by the Sun (vs in Earth's shadow); set when sunDir given
+}
+
+export interface Vec3 {
+  x: number;
+  y: number;
+  z: number;
+}
+
+const EARTH_RADIUS_KM = 6378.14;
+
+// Is a satellite at ECI position S (km) lit by the Sun (unit direction U, ECI)?
+// Cylindrical-shadow model: it's in eclipse only when it's on the anti-sun side
+// AND within one Earth radius of the Sun–Earth axis. Good enough to tell a visible
+// twilight pass from one that's in the Earth's shadow.
+export function isSatelliteSunlit(S: Vec3, U: Vec3): boolean {
+  const dot = S.x * U.x + S.y * U.y + S.z * U.z;
+  if (dot >= 0) return true; // sunward side — always lit
+  const px = S.x - dot * U.x;
+  const py = S.y - dot * U.y;
+  const pz = S.z - dot * U.z;
+  return Math.sqrt(px * px + py * py + pz * pz) > EARTH_RADIUS_KM;
 }
 
 export interface TLE {
@@ -36,7 +58,8 @@ export function parseTLEs(raw: string): TLE[] {
 export function getSatellitePosition(
   tle: TLE,
   date: Date,
-  observer?: Observer
+  observer?: Observer,
+  sunDirEci?: Vec3
 ): SatellitePosition | null {
   try {
     const satrec = satellite.twoline2satrec(tle.line1, tle.line2);
@@ -87,6 +110,10 @@ export function getSatellitePosition(
       elevationAngle = look.elevation * (180 / Math.PI);
     }
 
+    const sunlit = sunDirEci
+      ? isSatelliteSunlit(positionEci, sunDirEci)
+      : undefined;
+
     return {
       name: tle.name,
       ra,
@@ -94,6 +121,7 @@ export function getSatellitePosition(
       altitude: altitudeKm,
       azimuth,
       elevationAngle,
+      sunlit,
     };
   } catch {
     return null;
@@ -103,9 +131,10 @@ export function getSatellitePosition(
 export function getVisibleSatellites(
   tles: TLE[],
   date: Date,
-  observer?: Observer
+  observer?: Observer,
+  sunDirEci?: Vec3
 ): SatellitePosition[] {
   return tles
-    .map(tle => getSatellitePosition(tle, date, observer))
+    .map(tle => getSatellitePosition(tle, date, observer, sunDirEci))
     .filter((s): s is SatellitePosition => s !== null);
 }

@@ -28,6 +28,29 @@ describe("getPlanetPosition", () => {
     expect(planets).toHaveLength(5);
   });
 
+  it("computes realistic apparent magnitudes (Venus brightest, ~-4)", () => {
+    const venus = getPlanetPosition("Venus", date);
+    const jupiter = getPlanetPosition("Jupiter", date);
+    const mars = getPlanetPosition("Mars", date);
+    // 2024-01-15 reference (Stellarium): Venus ~-4.0, Jupiter ~-2.5, Mars ~+1.4
+    expect(venus.magnitude).toBeGreaterThan(-4.5);
+    expect(venus.magnitude).toBeLessThan(-3.5);
+    expect(jupiter.magnitude).toBeGreaterThan(-3);
+    expect(jupiter.magnitude).toBeLessThan(-2);
+    expect(mars.magnitude).toBeGreaterThan(0.5);
+    expect(mars.magnitude).toBeLessThan(2);
+    // Venus is brighter (lower magnitude) than Jupiter than Mars.
+    expect(venus.magnitude).toBeLessThan(jupiter.magnitude);
+    expect(jupiter.magnitude).toBeLessThan(mars.magnitude);
+  });
+
+  it("reports an illuminated fraction between 0 and 1", () => {
+    for (const p of getAllPlanets(date)) {
+      expect(p.phase).toBeGreaterThanOrEqual(0);
+      expect(p.phase).toBeLessThanOrEqual(1);
+    }
+  });
+
   // Regression guard for the Kepler-equation solver. On 2024-12-01 Mars is in
   // Cancer at RA ~128°, Dec ~+22° (JPL Horizons). A solver that mixes degrees
   // with the radian-valued e*sin(E) term lands near RA ~120° — ~8° off — so this

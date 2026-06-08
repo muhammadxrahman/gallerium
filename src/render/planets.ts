@@ -118,6 +118,11 @@ export function drawPlanetBody(
   return st.ring ? r * 2.3 : r;
 }
 
+// Brighter (lower-magnitude) planets render a bit larger, like the eye sees them.
+function magnitudeScale(mag: number): number {
+  return Math.max(0.75, Math.min(1.7, 1.3 - mag * 0.16));
+}
+
 export function renderPlanets(
   rc: RenderContext,
   planets: RenderedPlanet[],
@@ -127,7 +132,7 @@ export function renderPlanets(
     const p = project(planet.alt, planet.az);
     if (!p) continue;
     const [x, y] = p;
-    const reach = drawPlanetBody(rc.ctx, x, y, planet.name);
+    const reach = drawPlanetBody(rc.ctx, x, y, planet.name, magnitudeScale(planet.magnitude));
     drawLabel(rc.ctx, planet.name, x + reach + 5, y + 4, {
       font: "12px ui-sans-serif, system-ui, sans-serif",
       size: 12,

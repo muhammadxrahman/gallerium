@@ -67,6 +67,8 @@ export function updateInfoPanel(): void {
     panel.innerHTML = card("PLANET", p.name, [
       ["Altitude", `${p.alt.toFixed(1)}°`],
       ["Azimuth", `${p.az.toFixed(1)}°`],
+      ["Magnitude", p.magnitude.toFixed(1)],
+      ["Illumination", `${Math.round(p.phase * 100)}%`],
     ]);
   } else if (obj.type === "sun") {
     const s = obj.data;

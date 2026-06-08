@@ -1,9 +1,10 @@
 export interface MoonPosition {
-  ra: number;   // degrees
-  dec: number;  // degrees
+  ra: number;   // degrees (geocentric)
+  dec: number;  // degrees (geocentric)
   phase: number; // 0-1 illuminated fraction (0=new, 1=full); same value as illumination
   illumination: number; // 0-1 fraction of the disc lit
   waxing: boolean; // true while growing (new→full), false while shrinking (full→new)
+  distanceKm: number; // Earth–Moon distance, for topocentric parallax
 }
 
 function toRad(deg: number): number {
@@ -79,6 +80,22 @@ const dB =
     0.009266 * Math.sin(2 * Drad + Mrad - Frad) +
     0.008822 * Math.sin(2 * Mrad - Frad);
 
+  // Earth–Moon distance (km) — main periodic terms from Meeus table 47.A.
+  const distanceKm =
+    385000.56 -
+    20905.355 * Math.cos(Mrad) -
+    3699.111 * Math.cos(2 * Drad - Mrad) -
+    2955.968 * Math.cos(2 * Drad) -
+    569.925 * Math.cos(2 * Mrad) +
+    48.888 * Math.cos(Msrad) +
+    246.158 * Math.cos(2 * Drad - 2 * Mrad) -
+    152.138 * Math.cos(2 * Drad - Mrad - Msrad) -
+    170.733 * Math.cos(2 * Drad + Mrad) -
+    204.586 * Math.cos(2 * Drad - Msrad) -
+    129.620 * Math.cos(Mrad - Msrad) +
+    108.743 * Math.cos(Drad) +
+    104.755 * Math.cos(Mrad + Msrad);
+
   // Ecliptic longitude and latitude
   const lambda = normalizeAngle(L0 + dL);
   const beta   = dB;
@@ -106,5 +123,5 @@ const dB =
   const illumination = phase;
   const waxing = elongation < 180;
 
-  return { ra, dec, phase, illumination, waxing };
+  return { ra, dec, phase, illumination, waxing, distanceKm };
 }

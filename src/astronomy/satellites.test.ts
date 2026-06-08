@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseTLEs, getSatellitePosition } from "./satellites";
+import { parseTLEs, getSatellitePosition, isSatelliteSunlit } from "./satellites";
 
 // Real ISS TLE from 2024-01-15 (static for testing)
 const ISS_TLE_RAW = `ISS (ZARYA)
@@ -61,6 +61,23 @@ describe("satellites", () => {
     const date = new Date("2024-01-15T12:00:00Z");
     const pos = getSatellitePosition(badTLE, date);
     expect(pos).toBeNull();
+  });
+});
+
+describe("isSatelliteSunlit (cylindrical Earth-shadow model)", () => {
+  const sun = { x: 1, y: 0, z: 0 }; // Sun toward +x
+
+  it("is lit on the sunward side", () => {
+    expect(isSatelliteSunlit({ x: 7000, y: 0, z: 0 }, sun)).toBe(true);
+  });
+
+  it("is in shadow when directly behind the Earth (on the anti-sun axis)", () => {
+    expect(isSatelliteSunlit({ x: -7000, y: 0, z: 0 }, sun)).toBe(false);
+  });
+
+  it("is lit on the anti-sun side if far enough off the shadow axis", () => {
+    // 7000 km off-axis is well beyond Earth's radius → out of the umbra.
+    expect(isSatelliteSunlit({ x: -7000, y: 7000, z: 0 }, sun)).toBe(true);
   });
 });
 

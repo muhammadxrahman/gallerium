@@ -24,10 +24,13 @@ src/
 │   ├── coordinates.ts    # RA/Dec → Alt/Az transform (equatorialToHorizontal)
 │   ├── sidereal.ts       # GMST, LST from system clock
 │   ├── planets.ts        # Keplerian orbital mechanics for 5 planets (VSOP87-lite)
-│   ├── moon.ts           # Meeus lunar theory (~2° accuracy)
+│   ├── moon.ts           # Meeus lunar theory + Earth–Moon distance (~2° accuracy)
 │   ├── sun.ts            # Meeus low-precision solar position (~0.01°)
+│   ├── refraction.ts     # Atmospheric refraction (Bennett): true → apparent altitude
+│   ├── precession.ts     # Precess J2000 RA/Dec to date (Meeus ch. 21)
+│   ├── parallax.ts       # Topocentric correction (lunar parallax, Meeus ch. 40)
 │   ├── referenceLines.ts # Static geometry: ecliptic path + Milky Way (galactic) band
-│   └── satellites.ts     # SGP4 propagation via satellite.js@4.1.4
+│   └── satellites.ts     # SGP4 propagation + sunlit/shadow test (satellite.js@4.1.4)
 ├── data/             # Data loading with IndexedDB caching
 │   ├── stars.ts          # HYG v4.1 catalog loader + CSV parser (skips Sun row id 0)
 │   ├── tles.ts           # CelesTrak TLE fetcher (GROUP=visual)
@@ -48,6 +51,7 @@ src/
 │   ├── InfoPanel.ts      # Tap-to-identify overlay (stars, planets, Moon, satellites)
 │   ├── HitDetection.ts   # Click/touch → nearest object
 │   ├── Orientation.ts    # DeviceOrientationEvent → azimuth/altitude (iOS webkitCompassHeading)
+│   ├── pose.ts           # Pure device(α,β,γ) → alt/az via rotation matrix (tested)
 │   ├── PermissionPrompt.ts # iOS orientation permission flow
 │   ├── LocationControl.ts  # Manual lat/long entry + GPS re-request
 │   ├── Layers.ts         # Overlay toggles (constellations, grid, ecliptic, Milky Way) + daylight
@@ -76,6 +80,13 @@ src/
 2. `getLST()` from sidereal.ts gives Local Sidereal Time
 3. `equatorialToHorizontal()` converts to Alt/Az for the observer
 4. `altAzToXY()` or `altAzToXYPointed()` converts to canvas pixels
+
+**Apparent position.** `computeBodies` (main.ts) turns geometric into *apparent* positions:
+stars are precessed J2000→date once per load (`precessedStars`); the Moon's geocentric
+RA/Dec gets a topocentric-parallax correction (it's near-field, ~1°); then every body's
+altitude passes through `refractedAltitude` (`toApparentHorizontal`). Satellites are gated by
+visibility — only shown when the observer is dark (Sun < −6°) and the satellite is sunlit
+(`isSatelliteSunlit`). Nutation/aberration are intentionally omitted (<0.01°).
 
 **One draw path, two projectors.** `draw()` is shared between map and AR; they differ only
 in two closures built per frame:
@@ -155,12 +166,11 @@ are pure math and must always render, even fully offline with no cached data.
 
 ## Known Issues
 
-- **Orientation jitter on mode switch**: switching to sky view causes a visible jump
-  because the first frame uses a stale orientation value before the device settles.
+- **AR azimuth needs on-device tuning**: altitude is now matrix-correct (overhead/roll),
+  but azimuth still leans on the compass heading and hasn't been validated on real hardware
+  across iOS/Android. Expect to tune heading sign/offset once tested on a phone.
 - **Planet accuracy degrades far from J2000**: the low-precision orbital elements
   are accurate to ~1° near year 2000, drift for dates far from that epoch.
-- **Moon position is geocentric**: no lunar parallax correction, so it can be up to
-  ~1° off from the observer's true perspective. Acceptable for a visual app.
 
 ---
 
@@ -190,6 +200,10 @@ the single source of truth for what's left.
 - [x] Sophistication pass: planet glyphs (Saturn rings, Jupiter belts, shaded spheres),
   bright-star diffraction spikes, dome vignette + glassy rim, meridian line, elegant
   loading overlay + canvas fade-in, redesigned info card, star-density (limiting-mag) slider
+- [x] Foundation P1: gnomonic AR projection, unified render path (one body path, two
+  projectors), resilient data loading (`fetchWithFallback` + mirrors + refresh + staleness), CI
+- [x] Accurate section (all): device pose model, atmospheric refraction, planet magnitudes +
+  phase, satellite sunlit/visibility, lunar parallax, precession, sky-view hit detection
 
 ### Beautiful (visual fidelity & UX)
 - [x] **P0** Day/night sky gradient + twilight + horizon glow (Sun-altitude driven), with a
@@ -210,18 +224,22 @@ the single source of truth for what's left.
   battery), Moon earthshine/libration, smooth map↔sky transition, first-run onboarding tour.
 
 ### Accurate (physical correctness)
-- [ ] **P0** Proper AR pose model: use full device orientation (alpha/beta/gamma + screen
-  orientation) → view direction. Current `90 - |beta|` can't point overhead/behind and
-  ignores roll. Fixes both accuracy and the mode-switch jitter. (See Known Issues.)
-- [ ] **P1** Atmospheric refraction near the horizon (~0.5° lift at alt 0) for realistic
-  rise/set and horizon placement.
-- [ ] **P1** Planet apparent magnitudes (currently placeholder `0`) → correct brightness +
-  size; planet phase and angular size.
-- [ ] **P1** Satellite *visibility*, not just position: only flag sats that are sunlit while
-  the observer is in darkness (Sun is now available).
-- [ ] **P2** Lunar topocentric parallax (~1°); precession of J2000 star coords to date;
-  nutation/aberration (sub-arcmin).
-- [ ] **P2** Hit detection in sky view (currently map-view only).
+- [x] **P0** Device pose model (`components/pose.ts`): device→world rotation matrix →
+  back-camera direction. Altitude = asin(−cos β·cos γ) now reaches the zenith and accounts
+  for roll (the old `90−|β|` could not). Unit-tested. (Azimuth still uses the compass /
+  matrix; on-device azimuth tuning is a follow-up since it can't be verified off-hardware.)
+- [x] **P1** Atmospheric refraction (`astronomy/refraction.ts`, Bennett) — applied to every
+  body's altitude in the pipeline (`toApparentHorizontal`). Tested.
+- [x] **P1** Planet apparent magnitudes + illuminated fraction (`MAG_COEFF`, phase angle);
+  planets sized by magnitude in render; magnitude + phase shown in the info card. Tested.
+- [x] **P1** Satellite visibility: `isSatelliteSunlit` (cylindrical shadow) + observer-dark
+  gate (Sun < −6°). Only genuinely visible sunlit passes are shown. Tested.
+- [x] **P2** Lunar topocentric parallax (`astronomy/parallax.ts`) using Moon distance from
+  `moon.ts`; precession J2000→date (`astronomy/precession.ts`) applied to the catalog once
+  per load. Both tested. Nutation/aberration intentionally omitted (<0.01°, far below the
+  visual/pixel tolerance — adding them would be false precision).
+- [x] **P2** Hit detection works in sky view: `pickObject` takes an `AltAzProjector`, and
+  taps use the active view's projector (map dome or AR). Selection ring shows in both.
 
 ### Real-world applicable (astronomy utility)
 - [ ] **P0** Time control / "time travel": scrub to tonight or any date/time. Everything is
@@ -263,7 +281,7 @@ the single source of truth for what's left.
 
 ## Testing Approach
 
-TDD with Vitest (58 tests). Every astronomy module has a test file, plus the render
+TDD with Vitest (81 tests). Every astronomy module has a test file, plus the render
 projection (`render/canvas.test.ts`), hit detection (`components/HitDetection.test.ts`),
 the star/TLE parsers, and `utils/fetchWithFallback.test.ts` (mirror fallback/retry, mocked
 `fetch`). Ground truth for astronomy is cross-checked against Stellarium Web or JPL

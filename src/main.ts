@@ -30,6 +30,10 @@ import { getLST } from "./astronomy/sidereal";
 import { getAllPlanets } from "./astronomy/planets";
 import { getVisibleSatellites } from "./astronomy/satellites";
 import { eclipticPath, milkyWayBand } from "./astronomy/referenceLines";
+import { refractedAltitude } from "./astronomy/refraction";
+import { precessFromJ2000 } from "./astronomy/precession";
+import { topocentricCorrection } from "./astronomy/parallax";
+import type { Star } from "./data/stars";
 import { requestLocation, cachedLocation, saveLocation } from "./utils/geo";
 import { initLocationControl } from "./components/LocationControl";
 import { initLayersControl, getLayers, setLayer } from "./components/Layers";
@@ -62,6 +66,16 @@ let firstDrawDone = false;
 // --- Preloaded data ---
 let starsData: Awaited<ReturnType<typeof loadStars>> = [];
 let tlesData: Awaited<ReturnType<typeof loadTLEs>> = [];
+// Catalog precessed from J2000 to the current epoch (done once per load — precession
+// is ~50"/yr, so it's static within a session).
+let precessedStars: Star[] = [];
+
+function applyPrecession(now: Date): void {
+  precessedStars = starsData.map((s) => {
+    const { ra, dec } = precessFromJ2000(s.ra, s.dec, now);
+    return { ...s, ra, dec };
+  });
+}
 
 function setStatus(msg: string) {
   statusEl.textContent = msg;
@@ -152,13 +166,26 @@ function makeArProjector(
   };
 }
 
+// The body projector (alt/az → pixels) for the CURRENTLY active view, used by hit
+// detection so taps line up with what's drawn — including in AR (sky view). For the
+// map it applies zoom/pan to rc; for AR it uses the live orientation + FOV.
+function bodyProjectorForView(rc: RenderContext): AltAzProjector {
+  if (isSkyView && isListening()) {
+    const fov = 90 / getZoom();
+    const { azimuth, altitude } = getOrientation();
+    return (alt, az) => (alt < -0.5 ? null : altAzToXYPointed(alt, az, altitude, azimuth, fov, rc));
+  }
+  applyView(rc); // map: zoom + pan the dome (mutates rc to match the render)
+  return (alt, az) => (alt < 0 ? null : altAzToXY(alt, az, rc));
+}
+
 // A clean ring + crosshair ticks marking the currently selected object (map view).
-function renderSelection(rc: RenderContext): void {
+function renderSelection(rc: RenderContext, project: AltAzProjector): void {
   const sel = state.selected;
   if (!sel) return;
-  const { alt, az } = sel.data;
-  if (alt < 0) return;
-  const [x, y] = altAzToXY(alt, az, rc);
+  const p = project(sel.data.alt, sel.data.az);
+  if (!p) return;
+  const [x, y] = p;
 
   rc.ctx.strokeStyle = "rgba(120, 220, 255, 0.9)";
   rc.ctx.lineWidth = 1.5;
@@ -219,7 +246,10 @@ function idleStatus(): string {
 async function refreshData(): Promise<void> {
   setStatus("Refreshing data…");
   const [stars, tles] = await Promise.allSettled([loadStars(true), loadTLEs(true)]);
-  if (stars.status === "fulfilled") starsData = stars.value;
+  if (stars.status === "fulfilled") {
+    starsData = stars.value;
+    applyPrecession(new Date());
+  }
   if (tles.status === "fulfilled") tlesData = tles.value;
   if (stars.status === "rejected" && tles.status === "rejected") {
     setStatus("Couldn't refresh — check your connection.");
@@ -229,38 +259,71 @@ async function refreshData(): Promise<void> {
   invalidatePositions();
 }
 
+// Convert geocentric RA/Dec → apparent horizontal (alt/az), applying atmospheric
+// refraction so objects sit where they actually appear (esp. near the horizon).
+function toApparentHorizontal(ra: number, dec: number, lst: number): { az: number; alt: number } {
+  const { az, alt } = equatorialToHorizontal({ ra, dec }, observer!, lst);
+  return { az, alt: refractedAltitude(alt) };
+}
+
 function computeBodies(now: Date): void {
   if (!observer) return;
   const lst = getLST(now, observer.longitude);
   lastLST = lst;
 
-  lastStars = starsData.map((star) => {
-    const { az, alt } = equatorialToHorizontal({ ra: star.ra, dec: star.dec }, observer!, lst);
-    return { ...star, az, alt };
-  });
+  // Stars are precessed to date (precessedStars); apply refraction per star.
+  lastStars = precessedStars.map((star) => ({
+    ...star,
+    ...toApparentHorizontal(star.ra, star.dec, lst),
+  }));
 
-  lastPlanets = getAllPlanets(now).map((p) => {
-    const { az, alt } = equatorialToHorizontal({ ra: p.ra, dec: p.dec }, observer!, lst);
-    return { ...p, az, alt };
-  });
+  lastPlanets = getAllPlanets(now).map((p) => ({
+    ...p,
+    ...toApparentHorizontal(p.ra, p.dec, lst),
+  }));
 
+  // Moon: correct geocentric RA/Dec for topocentric parallax (up to ~1°) first.
   const moonPos = getMoonPosition(now);
-  const moon = equatorialToHorizontal({ ra: moonPos.ra, dec: moonPos.dec }, observer!, lst);
+  const topo = topocentricCorrection(
+    moonPos.ra,
+    moonPos.dec,
+    moonPos.distanceKm,
+    observer.latitude,
+    lst
+  );
+  const moon = toApparentHorizontal(topo.ra, topo.dec, lst);
   lastMoon = { ...moonPos, az: moon.az, alt: moon.alt };
 
   const sunPos = getSunPosition(now);
-  const sun = equatorialToHorizontal({ ra: sunPos.ra, dec: sunPos.dec }, observer!, lst);
+  const sun = toApparentHorizontal(sunPos.ra, sunPos.dec, lst);
   lastSun = { ...sunPos, az: sun.az, alt: sun.alt };
 }
 
 function computeSatellites(now: Date): void {
-  if (!observer) return;
-  // Topocentric look angles against the observer (satellites are near-field).
-  lastSatellites = getVisibleSatellites(tlesData, now, observer).map((s) => ({
-    ...s,
-    az: s.azimuth ?? 0,
-    alt: s.elevationAngle ?? -90,
-  }));
+  // A satellite is only naked-eye visible when the observer is in darkness AND the
+  // satellite is sunlit (not in Earth's shadow). Otherwise show none — matching what
+  // you'd actually see (you can't spot satellites in daylight).
+  if (!observer || !lastSun || lastSun.alt >= -6) {
+    lastSatellites = [];
+    return;
+  }
+
+  // Sun direction in ECI (its geocentric equatorial RA/Dec → unit vector).
+  const raR = lastSun.ra * (Math.PI / 180);
+  const decR = lastSun.dec * (Math.PI / 180);
+  const sunDir = {
+    x: Math.cos(decR) * Math.cos(raR),
+    y: Math.cos(decR) * Math.sin(raR),
+    z: Math.sin(decR),
+  };
+
+  lastSatellites = getVisibleSatellites(tlesData, now, observer, sunDir)
+    .filter((s) => s.sunlit) // sunlit passes only
+    .map((s) => ({
+      ...s,
+      az: s.azimuth ?? 0,
+      alt: refractedAltitude(s.elevationAngle ?? -90),
+    }));
 }
 
 function draw(): void {
@@ -322,10 +385,11 @@ function draw(): void {
     renderConstellationNames(rc.ctx, project, vis);
   }
 
+  renderSelection(rc, projectAltAz); // works in both views now
+
   if (isAR) {
     renderArHud(rc);
   } else {
-    renderSelection(rc);
     renderCompass(rc);
   }
 
@@ -383,6 +447,7 @@ async function init() {
     console.error("Star catalog failed to load:", e);
     return [];
   });
+  applyPrecession(new Date()); // precess the J2000 catalog to the current epoch
 
   setStatus(
     starsData.length > 0
@@ -467,9 +532,8 @@ modeBtn.addEventListener("click", () => {
 
 canvas.addEventListener("click", (e) => {
   if (recentlyInteracted()) return; // ignore the click that ends a drag
-  const rc = initCanvas(canvas);
-  applyView(rc); // match the zoomed/panned render so hits line up
-  handleClick(e, rc, lastStars, lastPlanets, lastSatellites, lastMoon, lastSun);
+  const project = bodyProjectorForView(initCanvas(canvas));
+  handleClick(e, canvas, project, lastStars, lastPlanets, lastSatellites, lastMoon, lastSun);
   updateInfoPanel();
   markDirty(); // selection changed → redraw the highlight ring
 });
@@ -477,9 +541,8 @@ canvas.addEventListener("click", (e) => {
 canvas.addEventListener("touchend", (e) => {
   e.preventDefault();
   if (recentlyInteracted()) return; // the pointer-up ending a pan/pinch isn't a tap
-  const rc = initCanvas(canvas);
-  applyView(rc);
-  handleClick(e, rc, lastStars, lastPlanets, lastSatellites, lastMoon, lastSun);
+  const project = bodyProjectorForView(initCanvas(canvas));
+  handleClick(e, canvas, project, lastStars, lastPlanets, lastSatellites, lastMoon, lastSun);
   updateInfoPanel();
   markDirty();
 });
