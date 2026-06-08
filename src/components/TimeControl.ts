@@ -15,7 +15,6 @@ function toLocalInput(d: Date): string {
 export function initTimeControl(onChange: () => void): { open: () => void } {
   const panel = document.createElement("div");
   panel.className = "ui-panel bottom-panel";
-  panel.style.display = "none";
 
   const steps = document.createElement("div");
   steps.style.cssText = "display:flex;gap:6px;margin-bottom:10px;";
@@ -72,12 +71,14 @@ export function initTimeControl(onChange: () => void): { open: () => void } {
   }
 
   function open(): void {
-    if (panel.style.display === "none") {
-      sync();
-      panel.style.display = "block";
-    } else {
-      panel.style.display = "none";
+    if (panel.classList.contains("show")) {
+      panel.classList.remove("show");
+      return;
     }
+    // Only one bottom panel (Time / Tonight) open at a time.
+    document.querySelectorAll(".bottom-panel.show").forEach((p) => p.classList.remove("show"));
+    sync();
+    panel.classList.add("show");
   }
 
   return { open };

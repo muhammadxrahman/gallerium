@@ -171,6 +171,11 @@ own chip); main wires toolbar buttons to them. Icons come from `components/icons
 (SVG line-icons, `currentColor`) — **no emoji anywhere** in the UI. `#status` sits top-center,
 `#info-panel` and the panels anchor above the toolbar.
 
+**Panel motion is class-based, not display toggles.** Panels/overlays are always in the DOM
+and animate via a `.show` class (opacity + translate, shared `--ease`), so they fade+slide
+in/out consistently — toggling `display` can't transition. Only one bottom panel (Time /
+Tonight) is open at once. Radii come from the `--r-*` tokens.
+
 **Zoom + pan** live in components/Zoom.ts (wheel, mouse-drag, pinch, 1-finger drag;
 double-click/tap resets). Zoom is anchored at the cursor/pinch point so any region can be
 brought into focus. Map view applies both via `applyView(rc)` in main.ts (`rc.radius *=
@@ -229,6 +234,9 @@ the single source of truth for what's left.
   "Tonight" highlights feed; fixed quoted-empty HYG names polluting search
 - [x] UI consolidation: scattered chips → one bottom toolbar + settings sheet; replaced all
   emoji with an SVG line-icon set (`icons.ts`); status/info-panel repositioned clear of it
+- [x] Design-system pass: radius tokens + shared `--ease`; unified fade+slide entrance for
+  every panel/overlay (`.show` classes, not display toggles); dome outer glow + letter-spaced,
+  instrument-style compass labels with tick marks
 
 ### Beautiful (visual fidelity & UX)
 - [x] **P0** Day/night sky gradient + twilight + horizon glow (Sun-altitude driven), with a

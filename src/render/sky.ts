@@ -116,9 +116,20 @@ export function renderSkyDome(rc: RenderContext, sunAlt: number, sunAz: number):
   rc.ctx.fillRect(0, 0, rc.width, rc.height);
   rc.ctx.restore();
 
-  // A thin glassy rim where the dome meets the horizon.
-  rc.ctx.strokeStyle = "rgba(170,195,255,0.22)";
-  rc.ctx.lineWidth = 1.5;
+  // Soft outer glow so the dome feels seated on the background rather than cut out.
+  rc.ctx.save();
+  rc.ctx.shadowColor = "rgba(120,160,255,0.55)";
+  rc.ctx.shadowBlur = 22;
+  rc.ctx.strokeStyle = "rgba(120,160,255,0.35)";
+  rc.ctx.lineWidth = 2;
+  rc.ctx.beginPath();
+  rc.ctx.arc(rc.centerX, rc.centerY, rc.radius, 0, Math.PI * 2);
+  rc.ctx.stroke();
+  rc.ctx.restore();
+
+  // A thin crisp glassy rim where the dome meets the horizon.
+  rc.ctx.strokeStyle = "rgba(190,210,255,0.32)";
+  rc.ctx.lineWidth = 1;
   rc.ctx.beginPath();
   rc.ctx.arc(rc.centerX, rc.centerY, rc.radius, 0, Math.PI * 2);
   rc.ctx.stroke();

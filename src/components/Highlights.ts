@@ -8,8 +8,8 @@ export interface HighlightItem {
 export function initHighlights(getItems: () => HighlightItem[]): { open: () => void } {
   const panel = document.createElement("div");
   panel.className = "ui-panel bottom-panel";
-  panel.style.cssText += "max-height:60vh;overflow-y:auto;";
-  panel.style.display = "none";
+  panel.style.maxHeight = "60vh";
+  panel.style.overflowY = "auto";
   document.body.appendChild(panel);
 
   function render(): void {
@@ -27,12 +27,13 @@ export function initHighlights(getItems: () => HighlightItem[]): { open: () => v
   }
 
   function open(): void {
-    if (panel.style.display === "none") {
-      render();
-      panel.style.display = "block";
-    } else {
-      panel.style.display = "none";
+    if (panel.classList.contains("show")) {
+      panel.classList.remove("show");
+      return;
     }
+    document.querySelectorAll(".bottom-panel.show").forEach((p) => p.classList.remove("show"));
+    render();
+    panel.classList.add("show");
   }
 
   return { open };

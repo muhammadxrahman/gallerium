@@ -18,15 +18,7 @@ function isValidLon(n: number): boolean {
 // from the settings sheet; returns `{ open }`.
 export function initLocationControl(opts: LocationControlOptions): { open: () => void } {
   const overlay = document.createElement("div");
-  overlay.style.cssText = `
-    position: fixed;
-    inset: 0;
-    display: none;
-    align-items: center;
-    justify-content: center;
-    background: rgba(0,0,0,0.6);
-    z-index: 300;
-  `;
+  overlay.className = "overlay";
 
   const panel = document.createElement("div");
   panel.style.cssText = `
@@ -84,11 +76,11 @@ export function initLocationControl(opts: LocationControlOptions): { open: () =>
     latInput.value = cur ? String(cur.latitude) : "";
     lonInput.value = cur ? String(cur.longitude) : "";
     errorEl.textContent = "";
-    overlay.style.display = "flex";
+    overlay.classList.add("show");
   }
 
   function close() {
-    overlay.style.display = "none";
+    overlay.classList.remove("show");
   }
 
   cancelBtn.addEventListener("click", close);

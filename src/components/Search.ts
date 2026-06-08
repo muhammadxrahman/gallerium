@@ -12,8 +12,8 @@ export function initSearch(
   onSelect: (id: string) => void
 ): { open: () => void } {
   const overlay = document.createElement("div");
-  overlay.style.cssText =
-    "position:fixed;inset:0;display:none;align-items:flex-start;justify-content:center;background:rgba(0,0,0,0.55);z-index:300;";
+  overlay.className = "overlay";
+  overlay.style.alignItems = "flex-start"; // search sits near the top
 
   const box = document.createElement("div");
   box.className = "ui-panel";
@@ -34,7 +34,7 @@ export function initSearch(
   document.body.appendChild(overlay);
 
   function close(): void {
-    overlay.style.display = "none";
+    overlay.classList.remove("show");
   }
 
   function render(items: SearchItem[]): void {
@@ -72,7 +72,7 @@ export function initSearch(
     items = getItems();
     input.value = "";
     render(items);
-    overlay.style.display = "flex";
+    overlay.classList.add("show");
     input.focus();
   }
 

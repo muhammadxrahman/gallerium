@@ -87,28 +87,41 @@ export function renderCompass(rc: RenderContext): void {
     { label: "NW", az: 315 },
   ];
 
-  rc.ctx.font = "bold 13px sans-serif";
   rc.ctx.textAlign = "center";
   rc.ctx.textBaseline = "middle";
 
+  // Tick marks at every cardinal/intercardinal, just outside the rim.
+  for (const { az } of labels) {
+    const azRad = az * (Math.PI / 180);
+    const isCardinal = labels.find((l) => l.az === az)!.label.length === 1;
+    const inner = rc.radius + 3;
+    const outer = rc.radius + (isCardinal ? 9 : 6);
+    rc.ctx.strokeStyle = isCardinal ? "rgba(255,255,255,0.5)" : "rgba(255,255,255,0.25)";
+    rc.ctx.lineWidth = 1;
+    rc.ctx.beginPath();
+    rc.ctx.moveTo(rc.centerX + inner * Math.sin(azRad), rc.centerY - inner * Math.cos(azRad));
+    rc.ctx.lineTo(rc.centerX + outer * Math.sin(azRad), rc.centerY - outer * Math.cos(azRad));
+    rc.ctx.stroke();
+  }
+
+  // Letter-spaced, instrument-style labels — cardinals brighter than intercardinals.
   for (const { label, az } of labels) {
     const azRad = az * (Math.PI / 180);
     const isCardinal = label.length === 1;
-
-    // Place just outside the sky dome edge
-    const r = rc.radius + (isCardinal ? 18 : 14);
+    const r = rc.radius + (isCardinal ? 22 : 18);
     const x = rc.centerX + r * Math.sin(azRad);
     const y = rc.centerY - r * Math.cos(azRad);
 
-    rc.ctx.fillStyle = isCardinal
-      ? "rgba(255, 255, 255, 0.9)"
-      : "rgba(255, 255, 255, 0.45)";
-
+    rc.ctx.fillStyle = isCardinal ? "rgba(255,255,255,0.82)" : "rgba(180,195,225,0.4)";
     rc.ctx.font = isCardinal
-      ? "bold 13px sans-serif"
-      : "11px sans-serif";
-
-    rc.ctx.fillText(label, x, y);
+      ? '600 12px ui-sans-serif, system-ui, sans-serif'
+      : '500 10px ui-sans-serif, system-ui, sans-serif';
+    // Manual letter-spacing for the 2-char intercardinals (canvas has no tracking).
+    if (isCardinal) {
+      rc.ctx.fillText(label, x, y);
+    } else {
+      rc.ctx.fillText(label.split("").join(" "), x, y);
+    }
   }
 
   // Horizon ring
