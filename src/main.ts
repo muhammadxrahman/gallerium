@@ -43,7 +43,7 @@ import { initHighlights } from "./components/Highlights";
 import { createToolbar, tbContent } from "./components/Toolbar";
 import { initTour } from "./components/Tour";
 import { icon } from "./components/icons";
-import { initZoom, getZoom, setZoom, getPan, getViewVersion, recentlyInteracted, centerOn } from "./components/Zoom";
+import { initZoom, getZoom, setZoom, getPan, getViewVersion, recentlyInteracted, centerOn, resetView } from "./components/Zoom";
 import { state } from "./store/state";
 import { SkyEngine } from "./engine/SkyEngine";
 import { targetAltAz, targetLabel, targetSelection, metaFromSelection, metaToSearchId, type TargetMeta } from "./engine/search";
@@ -65,7 +65,15 @@ const canvas = document.getElementById("sky-canvas") as HTMLCanvasElement;
 const statusEl = document.getElementById("status") as HTMLDivElement;
 const loaderEl = document.getElementById("loader");
 const loaderTextEl = document.getElementById("loader-text");
+let resetBtn: HTMLButtonElement | null = null;
 let firstDrawDone = false;
+
+// The view is "transformed" when zoomed or panned away from the default — used to show
+// the reset button only when there's something to reset.
+function isViewTransformed(): boolean {
+  const p = getPan();
+  return getZoom() !== 1 || p.x !== 0 || p.y !== 0;
+}
 
 function setStatus(msg: string) {
   statusEl.textContent = msg;
@@ -413,6 +421,9 @@ function draw(): void {
     renderCompass(rc);
   }
 
+  // Show the reset button only while the view is zoomed/panned.
+  resetBtn?.classList.toggle("show", isViewTransformed());
+
   updateInfoPanel(engine.observer);
 }
 
@@ -559,6 +570,19 @@ async function init() {
   helpBtn.innerHTML = icon("help", 22);
   helpBtn.addEventListener("click", tour.open);
   document.body.appendChild(helpBtn);
+
+  // Reset-zoom button (top-left): appears only when zoomed/panned. The reliable way to
+  // reset on touch, since iOS doesn't fire `dblclick` for double-taps; desktop also keeps
+  // double-click. draw() toggles its `.show` based on the view transform.
+  resetBtn = document.createElement("button");
+  resetBtn.className = "reset-fab";
+  resetBtn.setAttribute("aria-label", "Reset zoom");
+  resetBtn.innerHTML = `${icon("reset", 18)}<span>Reset</span>`;
+  resetBtn.addEventListener("click", () => {
+    resetView();
+    markDirty();
+  });
+  document.body.appendChild(resetBtn);
 
   // --- Settings sheet contents ---
   // Night vision is a CSS-only mode (a red multiply veil over everything); reflect the

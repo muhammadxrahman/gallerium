@@ -231,11 +231,11 @@ zoom; rc.center += pan`); sky view is orientation-driven and uses only the zoom 
 skip selection when `recentlyInteracted()` (the pointer-up that ends a drag isn't a tap).
 
 **iOS reset gotcha.** Reset-on-`dblclick` is a *mouse* event — iOS Safari (and the
-home-screen PWA) never fires it for touch, so on iPhone double-tap-to-reset did nothing.
-The touch path detects a double-tap itself (`isDoubleTap`: two clean taps < 300 ms and
-< 30 px apart in `touchend`) and calls `resetView()`, suppressing the trailing selection.
-Keep both paths — `dblclick` for desktop, the touch detector for mobile. (Needs on-device
-confirmation on a real iPhone.)
+home-screen PWA) never fires it for touch, and a hand-rolled touch double-tap detector also
+proved unreliable on real iPhones. So reset on touch is an explicit **Reset button**
+(`.reset-fab`, top-left) wired to `resetView()`; it's shown only while the view is
+transformed (`isViewTransformed()` in main, toggled in `draw()`). Desktop keeps `dblclick`
+too. The tour points users at the button.
 
 **Startup degrades gracefully.** `init()` loads stars and TLEs independently
 (`.catch(() => [])`); a failed fetch never aborts startup. Planets, Moon, and the compass
@@ -252,10 +252,10 @@ are pure math and must always render, even fully offline with no cached data.
   out on-device; what remains is confirming the sign/scale are right on a real phone.
 - **Planet accuracy degrades far from J2000**: the low-precision orbital elements
   are accurate to ~1° near year 2000, drift for dates far from that epoch.
-- **iPhone double-tap reset (fix pending on-device check)**: double-tap-to-reset relied on
-  `dblclick`, which iOS doesn't fire for touch, so it did nothing on the website or the
-  home-screen PWA (worked on desktop). A touch double-tap detector now calls `resetView()`
-  (see the "iOS reset gotcha" rule); needs confirming on a real iPhone.
+- **iPhone zoom reset**: double-tap-to-reset relies on `dblclick`, which iOS doesn't fire
+  for touch (a touch double-tap detector was tried and didn't work reliably on device).
+  Resolved by a dedicated **Reset button** (top-left, shown when zoomed); desktop also keeps
+  double-click. See the "iOS reset gotcha" rule.
 
 ---
 

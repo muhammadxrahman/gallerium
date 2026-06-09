@@ -25,20 +25,6 @@ let dragPrevX = 0;
 let dragPrevY = 0;
 let dragMoved = 0;
 
-// double-tap (touch) state
-let lastTapTime = 0;
-let lastTapX = 0;
-let lastTapY = 0;
-const DOUBLE_TAP_MS = 300;
-const DOUBLE_TAP_PX = 30;
-
-// Two quick taps close together = a double-tap. iOS Safari doesn't fire `dblclick` for
-// touch (only mouse), so the touch handler detects this itself to reset the view — giving
-// iPhone the same double-tap-to-reset as a desktop double-click. Pure, so it's testable.
-export function isDoubleTap(gapMs: number, distPx: number): boolean {
-  return gapMs < DOUBLE_TAP_MS && distPx < DOUBLE_TAP_PX;
-}
-
 export function getZoom(): number {
   return zoom;
 }
@@ -198,21 +184,7 @@ export function initZoom(canvas: HTMLCanvasElement): void {
     }
     if (dragging && e.touches.length === 0) {
       dragging = false;
-      if (dragMoved > 8) {
-        gestureEndedAt = Date.now(); // a drag, not a tap — suppress the trailing click
-      } else {
-        // A clean tap. A second one soon and nearby is a double-tap → reset the view.
-        const now = Date.now();
-        if (isDoubleTap(now - lastTapTime, Math.hypot(dragPrevX - lastTapX, dragPrevY - lastTapY))) {
-          resetView();
-          gestureEndedAt = now; // the resetting tap isn't a selection
-          lastTapTime = 0;
-        } else {
-          lastTapTime = now;
-          lastTapX = dragPrevX;
-          lastTapY = dragPrevY;
-        }
-      }
+      if (dragMoved > 8) gestureEndedAt = Date.now();
     }
   };
   canvas.addEventListener("touchend", endTouch);

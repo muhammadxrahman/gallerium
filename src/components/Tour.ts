@@ -52,7 +52,7 @@ export const TOUR_STEPS: TourStep[] = [
   {
     icon: "move",
     title: "Zoom & move around",
-    body: "Pinch or scroll to zoom in for a closer look. Drag to pan around the sky. Double-tap to reset the view.",
+    body: "Pinch or scroll to zoom in for a closer look, and drag to pan around. Once you've zoomed in, a Reset button appears in the top-left corner to snap back (on a computer you can also double-click).",
   },
   {
     icon: "sky",
