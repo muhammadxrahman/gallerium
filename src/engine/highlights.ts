@@ -13,7 +13,26 @@ import type { TLE } from "../astronomy/satellites";
 import type { Observer } from "../astronomy/coordinates";
 import { icon } from "../components/icons";
 import type { HighlightItem } from "../components/Highlights";
+import { activeShowers, type ActiveShower } from "./meteorShowers";
+import type { TargetMeta } from "./search";
 import type { SkyBodies } from "./compute";
+
+// Map a Tonight body name (Moon, or a planet) to a guide target.
+function bodyMeta(name: string): TargetMeta {
+  return name === "Moon" ? { kind: "moon" } : { kind: "planet", name };
+}
+
+// One Tonight-feed line for an active meteor shower. The "what/when/where" is precise;
+// the rate is the ideal ZHR, explicitly labelled, since the real count depends on the
+// year's stream, sky darkness, and the Moon (see the radiant altitude / Moon lines).
+export function meteorShowerText(a: ActiveShower): string {
+  const days = Math.round(a.daysToPeak);
+  const when =
+    Math.abs(a.daysToPeak) < 0.5 ? "peaks tonight" : days > 0 ? `peaks in ${days}d` : `peaked ${-days}d ago`;
+  const radiant =
+    a.radiantAlt > 0 ? `radiant ${Math.round(a.radiantAlt)}° up` : "radiant below horizon";
+  return `${a.shower.name} — ${when}, ${radiant}, up to ${a.shower.zhr}/hr ideal`;
+}
 
 const COMPASS_16 = ["N","NNE","NE","ENE","E","ESE","SE","SSE","S","SSW","SW","WSW","W","WNW","NW","NNW"];
 
@@ -47,7 +66,7 @@ export function computeHighlights(
     const parts: string[] = [];
     if (sset.set) parts.push(`Sunset ${clockStr(sset.set)}`);
     if (dark.set) parts.push(`astro-dark ${clockStr(dark.set)}`);
-    if (parts.length) items.push({ icon: icon("sun"), text: parts.join(" · ") });
+    if (parts.length) items.push({ icon: icon("sun"), text: parts.join(" · "), target: { kind: "sun" } });
   }
 
   if (sky.moon) {
@@ -56,16 +75,21 @@ export function computeHighlights(
     if (sky.moon.alt >= 0 && rts.set) when = `, sets ${clockStr(rts.set)}`;
     else if (sky.moon.alt < 0 && rts.rise) when = `, rises ${clockStr(rts.rise)}`;
     const phase = moonPhaseName(sky.moon.illumination, sky.moon.waxing);
-    items.push({ icon: icon("moon"), text: `${phase} (${Math.round(sky.moon.illumination * 100)}%)${when}` });
+    items.push({
+      icon: icon("moon"),
+      text: `${phase} (${Math.round(sky.moon.illumination * 100)}%)${when}`,
+      target: { kind: "moon" },
+    });
   }
 
   for (const p of sky.planets) {
     const rts = riseTransitSet(p.ra, p.dec, observer, now, STD_ALT_STAR);
     const mag = `mag ${p.magnitude.toFixed(1)}`;
+    const target: TargetMeta = { kind: "planet", name: p.name };
     if (p.alt >= 0) {
-      items.push({ icon: icon("planet"), text: `${p.name} up now (${mag})${rts.set ? `, sets ${clockStr(rts.set)}` : ""}` });
+      items.push({ icon: icon("planet"), text: `${p.name} up now (${mag})${rts.set ? `, sets ${clockStr(rts.set)}` : ""}`, target });
     } else if (rts.rise) {
-      items.push({ icon: icon("planet"), text: `${p.name} rises ${clockStr(rts.rise)} (${mag})` });
+      items.push({ icon: icon("planet"), text: `${p.name} rises ${clockStr(rts.rise)} (${mag})`, target });
     }
   }
 
@@ -78,9 +102,22 @@ export function computeHighlights(
     for (let j = i + 1; j < bodies.length; j++) {
       const sep = angularSeparation(bodies[i].ra, bodies[i].dec, bodies[j].ra, bodies[j].dec);
       if (sep < 5) {
-        items.push({ icon: icon("conjunction"), text: `${bodies[i].name} & ${bodies[j].name} ${sep.toFixed(1)}° apart` });
+        items.push({
+          icon: icon("conjunction"),
+          text: `${bodies[i].name} & ${bodies[j].name} ${sep.toFixed(1)}° apart`,
+          target: bodyMeta(bodies[i].name),
+        });
       }
     }
+  }
+
+  // Active meteor showers (soonest-to-peak first). Tapping guides to the radiant.
+  for (const a of activeShowers(now, observer)) {
+    items.push({
+      icon: icon("meteor"),
+      text: meteorShowerText(a),
+      target: { kind: "point", label: `${a.shower.name} radiant`, ra: a.shower.radiantRA, dec: a.shower.radiantDec },
+    });
   }
 
   // Next visible ISS pass in the coming 24h.

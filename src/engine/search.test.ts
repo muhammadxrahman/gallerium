@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildSearchIndex, targetLabel, targetAltAz, targetSelection, metaFromSelection } from "./search";
+import { buildSearchIndex, targetLabel, targetAltAz, targetSelection, metaFromSelection, metaToSearchId } from "./search";
 import { computeBodies } from "./compute";
 import type { Star } from "../data/stars";
 import type { DeepSkyObject } from "../data/deepSky";
@@ -74,6 +74,13 @@ describe("targetAltAz / targetSelection / targetLabel", () => {
     expect(targetSelection({ kind: "con", label: "Orion", ra: 83, dec: 0 }, sky)).toBeNull();
   });
 
+  it("resolves a point target (e.g. a meteor radiant) to alt/az, with no info card", () => {
+    const pt = { kind: "point" as const, label: "Geminids radiant", ra: 100, dec: 20 };
+    expect(targetAltAz(pt, sky, NYC)).not.toBeNull();
+    expect(targetSelection(pt, sky)).toBeNull();
+    expect(targetLabel(pt)).toBe("Geminids radiant");
+  });
+
   it("labels targets readably", () => {
     expect(targetLabel({ kind: "planet", name: "Mars" })).toBe("Mars");
     expect(targetLabel({ kind: "con", label: "Lyra", ra: 0, dec: 0 })).toBe("Lyra");
@@ -137,5 +144,26 @@ describe("metaFromSelection (tap-to-lock identity)", () => {
       expect(after.data.id).toBe(before.data.id); // same object
       expect(after.data.az).not.toBeCloseTo(before.data.az, 1); // updated position
     }
+  });
+});
+
+describe("metaToSearchId", () => {
+  it("maps catalog targets to their search-index ids", () => {
+    expect(metaToSearchId({ kind: "sun" })).toBe("sun");
+    expect(metaToSearchId({ kind: "moon" })).toBe("moon");
+    expect(metaToSearchId({ kind: "planet", name: "Jupiter" })).toBe("planet:Jupiter");
+    expect(metaToSearchId({ kind: "star", id: 91262, label: "Vega" })).toBe("star:91262");
+    expect(metaToSearchId({ kind: "deepsky", id: "M31", label: "Andromeda (M31)" })).toBe("deepsky:M31");
+  });
+
+  it("returns null for non-catalog targets (constellations, arbitrary points)", () => {
+    expect(metaToSearchId({ kind: "con", label: "Orion", ra: 83, dec: 0 })).toBeNull();
+    expect(metaToSearchId({ kind: "point", label: "radiant", ra: 112, dec: 33 })).toBeNull();
+  });
+
+  it("round-trips through the search index (id → meta)", () => {
+    const { meta } = buildSearchIndex([star(7, 100, 20, "Vega")], cats, dsos);
+    const id = metaToSearchId({ kind: "star", id: 7, label: "Vega" })!;
+    expect(meta.get(id)).toEqual({ kind: "star", id: 7, label: "Vega" });
   });
 });

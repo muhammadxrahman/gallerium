@@ -13,7 +13,7 @@ A real-time, offline-first sky map that computes the positions of stars, planets
 
 Every position in Gallerium is derived from first principles rather than fetched from a service. The inputs are a star catalog (HYG v4.1), a satellite element set (CelesTrak TLEs), the observer's latitude and longitude, and the system clock. From those, the app computes apparent topocentric positions: where each object actually appears in the sky for the observer's location at the current instant.
 
-This constraint defines the engineering: spherical coordinate transforms, orbital propagation, atmospheric and geometric corrections, a Canvas 2D renderer with two projections, an offline caching strategy, and a render loop bounded for low battery use. The astronomy is validated against Stellarium and JPL Horizons, and the codebase has 217 automated tests.
+This constraint defines the engineering: spherical coordinate transforms, orbital propagation, atmospheric and geometric corrections, a Canvas 2D renderer with two projections, an offline caching strategy, and a render loop bounded for low battery use. The astronomy is validated against Stellarium and JPL Horizons, and the codebase has 245 automated tests.
 
 ## Features
 
@@ -25,13 +25,14 @@ This constraint defines the engineering: spherical coordinate transforms, orbita
 | Satellite passes | SGP4 orbit propagation from live TLEs. A satellite is drawn only when it is sunlit and the observer's sky is dark, the conditions under which it is actually visible. |
 | Time control | Set any date and time to plan an observation or review a past sky. |
 | Search and guide | Locate any catalog object. The map centers on it; in AR an arrow indicates the direction to turn. |
-| Tonight feed | Computed summary: sunset and astronomical-dark times, Moon phase, planet rise/set, conjunctions within 5°, and the next ISS pass with its track. |
+| Tonight feed | Computed summary: sunset and astronomical-dark times, Moon phase, planet rise/set, conjunctions within 5°, active meteor showers (timed by solar longitude), and the next ISS pass with its track. Tap any row to be guided straight to it. |
 | Tap to identify | Selecting an object shows its name, type, apparent magnitude, and rise/transit/set times. |
 | Offline | Service worker precaches the app shell; IndexedDB caches the catalog and TLEs. The app opens and functions with no network. |
 | Day/night sky | Background tint and star visibility track the computed Sun altitude. |
 | Light pollution | A Bortle 1 to 9 selector limits the visible stars and the Milky Way to match your site, from a pristine dark sky to an inner city. |
 | Night vision | A one-tap red mode that keeps the screen from emitting blue and green light, preserving your eyes' dark adaptation. |
 | Altitude tonight | Each object's info card shows a sparkline of its altitude over the next 24 hours, with the dark hours shaded, so you know when to look. |
+| Share the view | A link that restores the current location, time, zoom, and guided target, plus a one-tap PNG export of the sky. |
 
 <p align="center">
   <img src="docs/screenshots/02-ar-view.png" alt="AR mode overlaying constellation lines and a planet label aligned to the pointed sky direction" width="300">
@@ -127,7 +128,7 @@ utils/  clock, geolocation, fetch-with-fallback, math
 | Language | TypeScript (strict) |
 | Rendering | Canvas 2D (no WebGL, no Three.js) |
 | Build | Vite |
-| Tests | Vitest, 217 tests |
+| Tests | Vitest, 245 tests |
 | Offline / PWA | `vite-plugin-pwa` (Workbox) + IndexedDB |
 | Orbit propagation | `satellite.js` (SGP4) |
 | CI/CD | GitHub Actions: test and build gate, auto-deploy to GitHub Pages |
@@ -137,7 +138,7 @@ utils/  clock, geolocation, fetch-with-fallback, math
 
 ## Testing and validation
 
-217 automated tests cover the astronomy layer, the geometry of both projections, the data parsers, the deep-sky catalog, the resilient fetch logic, and the orchestration engine (compute pipeline, search/guide resolver, Tonight feed, render-loop scheduler).
+245 automated tests cover the astronomy layer, the geometry of both projections, the data parsers, the deep-sky catalog, the resilient fetch logic, and the orchestration engine (compute pipeline, search/guide resolver, Tonight feed, render-loop scheduler).
 
 Validation uses two methods:
 

@@ -14,7 +14,8 @@ export type TargetMeta =
   | { kind: "planet"; name: string }
   | { kind: "star"; id: number; label: string }
   | { kind: "deepsky"; id: string; label: string }
-  | { kind: "con"; label: string; ra: number; dec: number };
+  | { kind: "con"; label: string; ra: number; dec: number }
+  | { kind: "point"; label: string; ra: number; dec: number }; // any labeled RA/Dec (e.g. a meteor radiant)
 
 // The naked-eye planets plus the two outer (telescopic) planets, in distance order.
 export const PLANET_NAMES = ["Mercury", "Venus", "Mars", "Jupiter", "Saturn", "Uranus", "Neptune"];
@@ -87,6 +88,7 @@ export function targetAltAz(
       return d ? { alt: d.alt, az: d.az } : null;
     }
     case "con":
+    case "point":
       return equatorialToHorizontal({ ra: meta.ra, dec: meta.dec }, observer, sky.lst);
   }
 }
@@ -131,6 +133,26 @@ export function metaFromSelection(sel: SelectedObject): TargetMeta | null {
       const { id, name } = sel.data;
       return { kind: "deepsky", id, label: name === id ? id : `${name} (${id})` };
     }
+    default:
+      return null;
+  }
+}
+
+// The search-index id for a target (the inverse of `meta` lookup), so a guided target
+// can be put in a shareable URL and restored via `selectSearchResult(id)`. Returns null
+// for targets that aren't catalog entries (constellations, arbitrary points).
+export function metaToSearchId(meta: TargetMeta): string | null {
+  switch (meta.kind) {
+    case "sun":
+      return "sun";
+    case "moon":
+      return "moon";
+    case "planet":
+      return `planet:${meta.name}`;
+    case "star":
+      return `star:${meta.id}`;
+    case "deepsky":
+      return `deepsky:${meta.id}`;
     default:
       return null;
   }

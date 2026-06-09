@@ -38,6 +38,7 @@ src/
 │   ├── stars.ts          # HYG v4.1 catalog loader + CSV parser (skips Sun row id 0)
 │   ├── tles.ts           # CelesTrak TLE fetcher (GROUP=visual)
 │   ├── deepSky.ts        # Embedded Messier/Caldwell catalog (J2000, no fetch)
+│   ├── meteorShowers.ts  # Embedded major-shower table (solar-longitude peaks + radiants)
 │   └── constellations.json # d3-celestial line + name data (RA/Dec, embedded)
 ├── render/           # Canvas drawing. Takes computed positions, draws them.
 │   ├── canvas.ts         # RenderContext, projectors, altAzToXY, makePointedProjector (AR)
@@ -76,6 +77,7 @@ src/
 │   ├── fetchWithFallback.ts # Mirror fallback + retry + abort timeout (tested)
 │   ├── geo.ts            # Geolocation + localStorage persistence
 │   ├── bortle.ts         # Bortle light-pollution scale → limiting mag + Milky Way factor
+│   ├── shareUrl.ts       # Encode/parse a shareable view (location/time/zoom/target) in a URL
 │   └── math.ts           # toRad, toDeg, normalizeAngle, clamp, lerp
 └── main.ts           # Orchestration: load → locate → render loop
 ```
@@ -262,9 +264,11 @@ fold notable work into "Shipped". Keep this honest — it's the single source of
   glyphs, planet glyphs (Saturn's rings, Jupiter's bands), diffraction spikes, label
   declutter, vignette/glow. Throttled draw-on-change loop.
 - **Features** — time travel (scrub any date/time), search + "guide me there" (map centering /
-  AR arrow), Tonight highlights feed, tap-to-identify info card with rise/set + an
+  AR arrow), Tonight highlights feed (incl. active meteor showers, timed by solar longitude;
+  ideal-ZHR rate clearly labelled), tap-to-identify info card with rise/set + an
   altitude-tonight sparkline, tap-to-lock selection that tracks the object as time advances or
-  is scrubbed, light-pollution (Bortle) control, night-vision (red) mode, pinch/drag zoom + pan.
+  is scrubbed, tappable Tonight rows (guide straight to a highlight), shareable view links +
+  PNG export, light-pollution (Bortle) control, night-vision (red) mode, pinch/drag zoom + pan.
 - **UI / design** — consolidated bottom toolbar + settings sheet; a standalone top-right help
   button opening a replayable, plain-language feature tour; SVG line-icon set (no emoji);
   design tokens + unified class-based panel motion; loading overlay.
@@ -301,12 +305,18 @@ fold notable work into "Shipped". Keep this honest — it's the single source of
   site vs a city. Replaced the abstract star-density slider.
 - [x] **Altitude-tonight curve** — info-card SVG sparkline of the object's altitude over the
   next 24h with the dark hours shaded (`astronomy/altitudeTrack.ts` + `components/altitudeSparkline.ts`).
-- [ ] **Tappable Tonight feed** — tap any highlight (a planet, the ISS pass, a conjunction)
-  to be guided straight to it. Connects the two best features with little code.
-- [ ] **Meteor-shower highlights** — an embedded shower table surfaces active showers (peak
-  night, radiant, expected rate) in the Tonight feed. Timely, delightful, low-effort depth.
-- [ ] **Share the view** — export the current sky (location + time + framing) as an image,
-  and a shareable URL that restores it. Social proof and a portfolio-friendly feature.
+- [x] **Tappable Tonight feed** — each highlight carries a guide `target` (`engine/highlights.ts`);
+  tapping a row guides straight to it (planets, Moon, conjunctions, and meteor radiants via a
+  `point` target; the ISS pass stays non-tappable as it has no fixed position). Shares the
+  `guideTo()` path with search.
+- [x] **Meteor-shower highlights** — embedded major-shower table (`data/meteorShowers.ts`) +
+  a pure resolver (`engine/meteorShowers.ts`) that times each peak by solar longitude (λ☉,
+  accurate to hours, leap-year-proof) and reports the radiant's current altitude; surfaced in
+  the Tonight feed. The what/when/where is precise; the rate is the ideal ZHR, explicitly
+  labelled "ideal" since the real count depends on the year's stream, sky darkness, and Moon.
+- [x] **Share the view** — a "Share view" action builds a link encoding location + frozen
+  time + zoom + guided target (`utils/shareUrl.ts`), restored on load; uses the OS share sheet
+  or clipboard. A "Save image" action exports the canvas as a PNG. Section B complete.
 
 ### C. Convenience & content (P1/P2)
 - [ ] Observing list / favorites; coordinate-display setting (alt-az vs RA/dec); an optic
@@ -329,7 +339,7 @@ fold notable work into "Shipped". Keep this honest — it's the single source of
 
 ## Testing Approach
 
-TDD with Vitest (217 tests, 32 files). **Unit tests are co-located** with the code they
+TDD with Vitest (245 tests, 35 files). **Unit tests are co-located** with the code they
 cover (`src/**/*.test.ts`, declared once in `vite.config.ts`) — the Vitest/TS best practice:
 a test sits next to its module, moves with it, and imports it relatively. This is deliberate;
 don't relocate tests into a separate tree. The whole suite, by layer:
@@ -337,11 +347,11 @@ don't relocate tests into a separate tree. The whole suite, by layer:
 | Layer | Test files (`*.test.ts`) — what each covers |
 |---|---|
 | `astronomy/` | `coordinates` (eq→horizontal) · `sun` · `moon` · `planets` (7, Kepler + mags) · `precession` · `parallax` · `refraction` · `riseset` (+twilight) · `passes` · `satellites` (SGP4 + sunlit) · `referenceLines` · `altitudeTrack` (24h altitude/Sun tracks) · **`accuracy`** (cross-cutting ground-truth suite) |
-| `engine/` | `compute` · `search` · `highlights` · `scheduler` (cadence + draw-on-change) · `status` · `SkyEngine` (load→locate→compute lifecycle) |
+| `engine/` | `compute` · `search` · `highlights` (Tonight feed + meteor-shower text) · `meteorShowers` (λ☉ peak timing + radiant altitude) · `scheduler` (cadence + draw-on-change) · `status` · `SkyEngine` (load→locate→compute lifecycle) |
 | `render/` | `canvas` (both projections + optimized AR projector parity) |
 | `components/` | `HitDetection` (`pickObject`) · `pose` · `Orientation` (heading calibration) · `Tour` (content + nav) · `Layers` (night-vision + Bortle state) · `altitudeSparkline` (SVG builder + altToY) |
-| `data/` | `stars` (HYG parser) · `deepSky` (catalog integrity) |
-| `utils/` | `cache` (staleness) · `clock` (sky time) · `bortle` (light-pollution scale) · `fetchWithFallback` (mirror/retry, mocked `fetch`) |
+| `data/` | `stars` (HYG parser) · `deepSky` (catalog integrity) · `meteorShowers` (table integrity) |
+| `utils/` | `cache` (staleness) · `clock` (sky time) · `bortle` (light-pollution scale) · `shareUrl` (view-link encode/parse) · `fetchWithFallback` (mirror/retry, mocked `fetch`) |
 
 Ground truth for astronomy is cross-checked against Stellarium Web or JPL Horizons. Astronomy
 position tests use wide tolerances (±5°) — this is a visual app, not a navigation system

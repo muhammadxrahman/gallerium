@@ -29,7 +29,8 @@ import { loadTLEs, getTleMeta } from "./data/tles";
 import { equatorialToHorizontal } from "./astronomy/coordinates";
 import { eclipticPath, milkyWayBand } from "./astronomy/referenceLines";
 import { requestLocation, cachedLocation, saveLocation } from "./utils/geo";
-import { getSkyTime, isLive } from "./utils/clock";
+import { getSkyTime, isLive, setSkyTime } from "./utils/clock";
+import { parseShareState, encodeShareState, type ShareState } from "./utils/shareUrl";
 import { initLocationControl } from "./components/LocationControl";
 import { buildLayersControls, getLayers } from "./components/Layers";
 import { bortleLevel } from "./utils/bortle";
@@ -39,10 +40,10 @@ import { initHighlights } from "./components/Highlights";
 import { createToolbar, tbContent } from "./components/Toolbar";
 import { initTour } from "./components/Tour";
 import { icon } from "./components/icons";
-import { initZoom, getZoom, getPan, getViewVersion, recentlyInteracted, centerOn } from "./components/Zoom";
+import { initZoom, getZoom, setZoom, getPan, getViewVersion, recentlyInteracted, centerOn } from "./components/Zoom";
 import { state } from "./store/state";
 import { SkyEngine } from "./engine/SkyEngine";
-import { targetAltAz, targetLabel, targetSelection, metaFromSelection, type TargetMeta } from "./engine/search";
+import { targetAltAz, targetLabel, targetSelection, metaFromSelection, metaToSearchId, type TargetMeta } from "./engine/search";
 import { createScheduler, tick, markDirty as schedMarkDirty, invalidate as schedInvalidate } from "./engine/scheduler";
 import { idleStatus as computeIdleStatus } from "./engine/status";
 
@@ -134,8 +135,10 @@ async function refreshData(): Promise<void> {
 }
 
 // --- Guide me there (search selection) ---
-function selectSearchResult(id: string): void {
-  const meta = engine.search.meta.get(id) ?? null;
+// Lock onto a target and guide there: select it (info card + ring), and either center
+// the map on it or leave the AR arrow to point the way. Shared by search results and
+// tapped Tonight-feed rows.
+function guideTo(meta: TargetMeta | null): void {
   currentTarget = meta;
   if (!meta || !engine.observer) return;
   state.selected = targetSelection(meta, engine.bodies);
@@ -153,6 +156,69 @@ function selectSearchResult(id: string): void {
   updateInfoPanel(engine.observer);
   markDirty();
 }
+
+function selectSearchResult(id: string): void {
+  guideTo(engine.search.meta.get(id) ?? null);
+}
+
+// --- Share the view ---
+// The current location + (frozen) time + zoom + guided target, as a restorable link.
+function currentShareState(): ShareState {
+  const s: ShareState = {};
+  if (engine.observer) {
+    s.latitude = engine.observer.latitude;
+    s.longitude = engine.observer.longitude;
+  }
+  if (!isLive()) s.time = getSkyTime().getTime();
+  const z = getZoom();
+  if (z !== 1) s.zoom = z;
+  if (currentTarget) {
+    const id = metaToSearchId(currentTarget);
+    if (id) s.target = id;
+  }
+  return s;
+}
+
+function buildShareUrl(): string {
+  const q = encodeShareState(currentShareState());
+  return location.origin + location.pathname + (q ? `?${q}` : "");
+}
+
+// Share via the OS share sheet when available (mobile), else copy the link.
+async function shareView(): Promise<void> {
+  const url = buildShareUrl();
+  if (navigator.share) {
+    try {
+      await navigator.share({ title: "Gallerium", text: "My sky view", url });
+    } catch {
+      /* user dismissed the share sheet */
+    }
+    return;
+  }
+  try {
+    await navigator.clipboard.writeText(url);
+    setStatus("Share link copied");
+  } catch {
+    setStatus(url);
+  }
+}
+
+// Save the current canvas as a PNG download.
+function saveImage(): void {
+  canvas.toBlob((blob) => {
+    if (!blob) return;
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `gallerium-${Date.now()}.png`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  });
+}
+
+// Restore location/time/zoom from a shared link parsed at startup; the target is applied
+// after the first compute (it needs positioned bodies). Returns the parsed state.
+const sharedView = parseShareState(window.location.search);
 
 // --- Canvas overlays drawn by the coordinator ---
 function renderArHud(rc: RenderContext): void {
@@ -381,17 +447,26 @@ async function init() {
     })
   );
 
-  engine.observer = cachedLocation();
-  if (!engine.observer) {
-    setStatus("Requesting location...");
-    try {
-      engine.observer = await requestLocation();
-      saveLocation(engine.observer);
-    } catch {
-      setStatus("Location denied. Using default (New York).");
-      engine.observer = { latitude: 40.7128, longitude: -74.006 };
+  // A shared link's location wins (session-only — it isn't saved over the user's own).
+  if (sharedView.latitude !== undefined && sharedView.longitude !== undefined) {
+    engine.observer = { latitude: sharedView.latitude, longitude: sharedView.longitude };
+  } else {
+    engine.observer = cachedLocation();
+    if (!engine.observer) {
+      setStatus("Requesting location...");
+      try {
+        engine.observer = await requestLocation();
+        saveLocation(engine.observer);
+      } catch {
+        setStatus("Location denied. Using default (New York).");
+        engine.observer = { latitude: 40.7128, longitude: -74.006 };
+      }
     }
   }
+
+  // Restore a shared time + zoom.
+  if (sharedView.time !== undefined) setSkyTime(new Date(sharedView.time));
+  if (sharedView.zoom !== undefined) setZoom(sharedView.zoom);
 
   setStatus(idleStatus());
   initInfoPanel();
@@ -413,7 +488,7 @@ async function init() {
     timeBtn?.classList.toggle("tb-btn-active", !isLive());
   });
   const search = initSearch(() => engine.search.items, selectSearchResult);
-  const tonight = initHighlights(() => engine.highlights(getSkyTime()));
+  const tonight = initHighlights(() => engine.highlights(getSkyTime()), guideTo);
 
   // --- Bottom toolbar ---
   const toolbar = createToolbar();
@@ -440,6 +515,9 @@ async function init() {
 
   toolbar.addButton({ icon: icon("star"), label: "Tonight", onClick: tonight.open });
   toolbar.addButton({ icon: icon("sliders"), label: "Settings", onClick: toolbar.openSettings });
+
+  // A shared link may have restored a frozen time — reflect it on the Time button.
+  if (!isLive()) timeBtn.classList.add("tb-btn-active");
 
   // Top-right help button: opens the replayable feature tour. A standalone affordance
   // (not buried in settings) so a first-time user spots it immediately.
@@ -476,6 +554,22 @@ async function init() {
   refreshRow.innerHTML = tbContent(icon("refresh", 18), "Refresh data");
   refreshRow.addEventListener("click", refreshData);
   toolbar.settingsBody.appendChild(refreshRow);
+
+  // Share the current view (location + time + zoom + target) as a link, and save the sky
+  // as a PNG.
+  const shareRow = document.createElement("button");
+  shareRow.className = "ui-chip";
+  shareRow.style.cssText = "width:100%;justify-content:center;margin-top:8px;";
+  shareRow.innerHTML = tbContent(icon("share", 18), "Share view");
+  shareRow.addEventListener("click", shareView);
+  toolbar.settingsBody.appendChild(shareRow);
+
+  const saveRow = document.createElement("button");
+  saveRow.className = "ui-chip";
+  saveRow.style.cssText = "width:100%;justify-content:center;margin-top:8px;";
+  saveRow.innerHTML = tbContent(icon("image", 18), "Save image");
+  saveRow.addEventListener("click", saveImage);
+  toolbar.settingsBody.appendChild(saveRow);
 
   // Compass calibration: nudge the Sky-view heading until it lines up with the real sky
   // (phone compasses can read tens of degrees off). Only affects the AR view.
@@ -531,6 +625,12 @@ async function init() {
 
   window.addEventListener("resize", markDirty);
   window.addEventListener("orientationchange", markDirty);
+
+  // Restore a shared guide target: needs positioned bodies, so compute once first.
+  if (sharedView.target && engine.observer) {
+    engine.recomputeBodies(getSkyTime());
+    selectSearchResult(sharedView.target);
+  }
 
   requestAnimationFrame(loop);
 }

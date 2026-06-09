@@ -460,6 +460,26 @@ body.night-vision #night-veil {
   color: rgba(255, 255, 255, 0.88);
   line-height: 1.4;
 }
+/* Tappable rows (those with a guide target) are buttons: reset chrome, full width,
+   left-aligned, with a subtle hover/press affordance. */
+button.hl-row {
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  border-radius: var(--r-sm);
+  margin: 0 -6px;
+  padding: 6px;
+  font-family: var(--font);
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+button.hl-row:hover {
+  background: rgba(255, 255, 255, 0.07);
+}
+button.hl-row:active {
+  background: rgba(108, 198, 255, 0.14);
+}
 .hl-icon {
   flex: none;
   width: 20px;

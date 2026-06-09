@@ -29,6 +29,12 @@ export function getZoom(): number {
   return zoom;
 }
 
+// Set the zoom factor directly (clamped), e.g. when restoring a shared view.
+export function setZoom(z: number): void {
+  zoom = clamp(z);
+  viewVersion++;
+}
+
 export function getPan(): { x: number; y: number } {
   return { x: panX, y: panY };
 }

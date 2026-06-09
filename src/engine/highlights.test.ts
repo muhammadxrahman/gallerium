@@ -1,7 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { computeHighlights, dirName, clockStr, angularSeparation } from "./highlights";
+import { computeHighlights, dirName, clockStr, angularSeparation, meteorShowerText } from "./highlights";
 import { computeBodies } from "./compute";
 import { parseTLEs } from "../astronomy/satellites";
+import type { ActiveShower } from "./meteorShowers";
 
 const NYC = { latitude: 40.71, longitude: -74.006 };
 const DATE = new Date("2024-09-15T02:30:00Z");
@@ -52,5 +53,63 @@ describe("computeHighlights", () => {
 
   it("includes a Moon phase line", () => {
     expect(items.some((i) => /Moon|Crescent|Gibbous|Quarter/.test(i.text))).toBe(true);
+  });
+
+  it("surfaces an active meteor shower (Geminids in mid-December)", () => {
+    const dec = new Date("2025-12-14T05:00:00Z");
+    const decItems = computeHighlights(computeBodies([], NYC, dec), NYC, dec, ISS);
+    expect(decItems.some((i) => /Geminids/.test(i.text))).toBe(true);
+  });
+
+  it("attaches guide targets to tappable rows (Moon, planets)", () => {
+    expect(items.some((i) => i.target?.kind === "moon")).toBe(true);
+    expect(items.some((i) => i.target?.kind === "planet")).toBe(true);
+  });
+
+  it("leaves the ISS pass row non-tappable when present (future event, no fixed position)", () => {
+    const iss = items.find((i) => /ISS/.test(i.text));
+    if (iss) expect(iss.target).toBeUndefined();
+  });
+
+  it("makes a meteor-shower row guide to its radiant (a point target)", () => {
+    const dec = new Date("2025-12-14T05:00:00Z");
+    const decItems = computeHighlights(computeBodies([], NYC, dec), NYC, dec, ISS);
+    const gem = decItems.find((i) => /Geminids/.test(i.text));
+    expect(gem?.target?.kind).toBe("point");
+  });
+});
+
+describe("meteorShowerText", () => {
+  const base: ActiveShower = {
+    shower: {
+      name: "Geminids",
+      peakLon: 262.2,
+      startLon: 255,
+      endLon: 267,
+      radiantRA: 112,
+      radiantDec: 33,
+      zhr: 150,
+      parent: "(3200) Phaethon",
+    },
+    daysToPeak: 0,
+    radiantAlt: 45,
+  };
+
+  it("says 'peaks tonight' at the peak and shows the radiant altitude + ideal rate", () => {
+    const t = meteorShowerText(base);
+    expect(t).toContain("Geminids");
+    expect(t).toContain("peaks tonight");
+    expect(t).toContain("radiant 45° up");
+    expect(t).toContain("up to 150/hr ideal");
+  });
+
+  it("counts down to an upcoming peak and notes a radiant below the horizon", () => {
+    const t = meteorShowerText({ ...base, daysToPeak: 3, radiantAlt: -12 });
+    expect(t).toContain("peaks in 3d");
+    expect(t).toContain("radiant below horizon");
+  });
+
+  it("reports a past peak", () => {
+    expect(meteorShowerText({ ...base, daysToPeak: -2 })).toContain("peaked 2d ago");
   });
 });
