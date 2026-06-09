@@ -42,7 +42,7 @@ export const TOUR_STEPS: TourStep[] = [
   {
     icon: "sliders",
     title: "Settings",
-    body: "Show or hide constellations, the Milky Way, deep-sky objects, and daylight. You can also set your location by hand or refresh the data.",
+    body: "Show or hide constellations, the Milky Way, and deep-sky objects; switch on a red night-vision mode; match your light pollution so the sky looks like your real one; set your location; or share and save the view.",
   },
   {
     icon: "pin",

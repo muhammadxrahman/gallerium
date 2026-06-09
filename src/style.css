@@ -173,6 +173,21 @@ html, body {
   accent-color: var(--accent);
   cursor: pointer;
 }
+.ui-select {
+  appearance: none;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: var(--r-sm);
+  color: rgba(255, 255, 255, 0.92);
+  font-family: var(--font);
+  font-size: 12px;
+  padding: 5px 9px;
+  cursor: pointer;
+}
+.ui-select option {
+  background: #0c0e16;
+  color: #fff;
+}
 
 /* ---- Bottom toolbar ---- */
 .toolbar {
@@ -535,6 +550,31 @@ button.hl-row:active {
   font-size: 18px;
   font-weight: 600;
   color: #fff;
+}
+/* Favorite (★) toggle, pushed to the right of the card header. The icon uses
+   currentColor, so color alone fills/empties it: gold when saved, dim otherwise. */
+.fav-btn {
+  margin-left: auto;
+  flex: none;
+  display: inline-flex;
+  padding: 4px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: rgba(255, 255, 255, 0.4);
+  transition: color 0.12s ease, transform 0.08s ease;
+}
+.fav-btn:hover {
+  color: rgba(255, 255, 255, 0.7);
+}
+.fav-btn:active {
+  transform: scale(0.9);
+}
+.fav-btn.fav-on {
+  color: #ffd36b;
+}
+.fav-btn.fav-on svg {
+  fill: #ffd36b;
 }
 .info-stats {
   display: grid;

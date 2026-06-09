@@ -1,4 +1,5 @@
 import { bortleLevel, DEFAULT_BORTLE } from "../utils/bortle";
+import { OPTICS } from "../utils/optics";
 
 export interface LayerState {
   nightVision: boolean; // red palette to preserve dark adaptation
@@ -9,11 +10,13 @@ export interface LayerState {
   ecliptic: boolean;
   milkyway: boolean;
   deepSky: boolean;
+  equatorialCoords: boolean; // info card shows RA/Dec instead of Alt/Az
   bortle: number; // light-pollution class 1..9 (drives magnitudeLimit + Milky Way)
   magnitudeLimit: number; // derived from bortle; the limit renderStars actually uses
+  opticFov: number; // AR true-field ring, degrees (0 = off)
 }
 
-type BoolKey = Exclude<keyof LayerState, "magnitudeLimit" | "bortle">;
+type BoolKey = Exclude<keyof LayerState, "magnitudeLimit" | "bortle" | "opticFov">;
 
 const DEFAULTS: LayerState = {
   nightVision: false,
@@ -24,8 +27,10 @@ const DEFAULTS: LayerState = {
   ecliptic: true,
   milkyway: true,
   deepSky: true,
+  equatorialCoords: false,
   bortle: DEFAULT_BORTLE,
   magnitudeLimit: bortleLevel(DEFAULT_BORTLE).limitMag,
+  opticFov: 0,
 };
 
 const KEY = "gallerium-layers";
@@ -69,8 +74,14 @@ export function setBortle(cls: number): void {
   save();
 }
 
+export function setOpticFov(fov: number): void {
+  state.opticFov = fov;
+  save();
+}
+
 const ROWS: Array<{ key: BoolKey; label: string }> = [
   { key: "nightVision", label: "Night vision (red)" },
+  { key: "equatorialCoords", label: "Equatorial coords (RA/Dec)" },
   { key: "daylight", label: "Daylight sky" },
   { key: "constellations", label: "Constellations" },
   { key: "constellationNames", label: "Constellation names" },
@@ -128,4 +139,28 @@ export function buildLayersControls(container: HTMLElement, onChange: () => void
   sliderWrap.appendChild(sliderLabel);
   sliderWrap.appendChild(slider);
   container.appendChild(sliderWrap);
+
+  // Optic field-of-view ring (AR): pick a binocular/telescope to overlay its true field.
+  const opticWrap = document.createElement("div");
+  opticWrap.style.cssText =
+    "padding:6px 8px 4px;display:flex;align-items:center;justify-content:space-between;gap:10px;";
+  const opticLbl = document.createElement("span");
+  opticLbl.textContent = "Optic field (Sky view)";
+  opticLbl.style.cssText = "font-size:12px;color:rgba(255,255,255,0.6);";
+  const select = document.createElement("select");
+  select.className = "ui-select";
+  for (const o of OPTICS) {
+    const opt = document.createElement("option");
+    opt.value = String(o.fov);
+    opt.textContent = o.label;
+    if (o.fov === state.opticFov) opt.selected = true;
+    select.appendChild(opt);
+  }
+  select.addEventListener("change", () => {
+    setOpticFov(parseFloat(select.value));
+    onChange();
+  });
+  opticWrap.appendChild(opticLbl);
+  opticWrap.appendChild(select);
+  container.appendChild(opticWrap);
 }

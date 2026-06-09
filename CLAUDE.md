@@ -61,7 +61,7 @@ src/
 │   ├── pose.ts           # Pure device(α,β,γ) → alt/az via rotation matrix (tested)
 │   ├── PermissionPrompt.ts # iOS orientation permission flow
 │   ├── LocationControl.ts  # Manual lat/long entry + GPS re-request (modal)
-│   ├── Layers.ts         # buildLayersControls() → toggles (incl. night vision) + Bortle slider
+│   ├── Layers.ts         # Settings toggles (night vision, RA/Dec) + Bortle slider + optic select
 │   ├── TimeControl.ts    # Time-travel panel (datetime / ±h ±d / Live)
 │   ├── Search.ts         # Object search overlay (→ "guide me there")
 │   ├── Highlights.ts     # "Tonight" feed panel
@@ -70,7 +70,8 @@ src/
 │   ├── icons.ts          # SVG line-icon set (no emoji)
 │   └── Zoom.ts           # Pinch + wheel zoom factor (shared by both views)
 ├── store/
-│   └── state.ts          # Shared selected object state
+│   ├── state.ts          # Shared selected object state
+│   └── favorites.ts      # Observing list (persisted search ids) + search reordering
 ├── utils/
 │   ├── cache.ts          # IndexedDB get/set/delete + cacheGetEntry (staleness)
 │   ├── clock.ts          # Sky time (live or scrubbed) — single source for all positions
@@ -78,6 +79,9 @@ src/
 │   ├── geo.ts            # Geolocation + localStorage persistence
 │   ├── bortle.ts         # Bortle light-pollution scale → limiting mag + Milky Way factor
 │   ├── shareUrl.ts       # Encode/parse a shareable view (location/time/zoom/target) in a URL
+│   ├── coordFormat.ts    # RA (h/m) + Dec (°/′) formatting for the info card
+│   ├── optics.ts         # Optic FOV presets + AR true-field ring geometry
+│   ├── haptics.ts        # AR-lock haptic hysteresis (pure) + vibrate() wrapper
 │   └── math.ts           # toRad, toDeg, normalizeAngle, clamp, lerp
 └── main.ts           # Orchestration: load → locate → render loop
 ```
@@ -226,6 +230,13 @@ zoom; rc.center += pan`); sky view is orientation-driven and uses only the zoom 
 (`FOV = 90 / zoom`). Hit detection MUST call the same `applyView(rc)` so taps line up, and
 skip selection when `recentlyInteracted()` (the pointer-up that ends a drag isn't a tap).
 
+**iOS reset gotcha.** Reset-on-`dblclick` is a *mouse* event — iOS Safari (and the
+home-screen PWA) never fires it for touch, so on iPhone double-tap-to-reset did nothing.
+The touch path detects a double-tap itself (`isDoubleTap`: two clean taps < 300 ms and
+< 30 px apart in `touchend`) and calls `resetView()`, suppressing the trailing selection.
+Keep both paths — `dblclick` for desktop, the touch detector for mobile. (Needs on-device
+confirmation on a real iPhone.)
+
 **Startup degrades gracefully.** `init()` loads stars and TLEs independently
 (`.catch(() => [])`); a failed fetch never aborts startup. Planets, Moon, and the compass
 are pure math and must always render, even fully offline with no cached data.
@@ -241,6 +252,10 @@ are pure math and must always render, even fully offline with no cached data.
   out on-device; what remains is confirming the sign/scale are right on a real phone.
 - **Planet accuracy degrades far from J2000**: the low-precision orbital elements
   are accurate to ~1° near year 2000, drift for dates far from that epoch.
+- **iPhone double-tap reset (fix pending on-device check)**: double-tap-to-reset relied on
+  `dblclick`, which iOS doesn't fire for touch, so it did nothing on the website or the
+  home-screen PWA (worked on desktop). A touch double-tap detector now calls `resetView()`
+  (see the "iOS reset gotcha" rule); needs confirming on a real iPhone.
 
 ---
 
@@ -267,8 +282,10 @@ fold notable work into "Shipped". Keep this honest — it's the single source of
   AR arrow), Tonight highlights feed (incl. active meteor showers, timed by solar longitude;
   ideal-ZHR rate clearly labelled), tap-to-identify info card with rise/set + an
   altitude-tonight sparkline, tap-to-lock selection that tracks the object as time advances or
-  is scrubbed, tappable Tonight rows (guide straight to a highlight), shareable view links +
-  PNG export, light-pollution (Bortle) control, night-vision (red) mode, pinch/drag zoom + pan.
+  is scrubbed, tappable Tonight rows (guide straight to a highlight), an observing list
+  (favorites), alt-az↔RA/Dec coordinate display, an AR optic field-of-view ring, AR-lock
+  haptics, shareable view links + PNG export, light-pollution (Bortle) control, night-vision
+  (red) mode, pinch/drag zoom + pan.
 - **UI / design** — consolidated bottom toolbar + settings sheet; a standalone top-right help
   button opening a replayable, plain-language feature tour; SVG line-icon set (no emoji);
   design tokens + unified class-based panel motion; loading overlay.
@@ -319,10 +336,17 @@ fold notable work into "Shipped". Keep this honest — it's the single source of
   or clipboard. A "Save image" action exports the canvas as a PNG. Section B complete.
 
 ### C. Convenience & content (P1/P2)
-- [ ] Observing list / favorites; coordinate-display setting (alt-az vs RA/dec); an optic
-  field-of-view ring (binocular/telescope true field overlay).
-- [ ] Comets / bright asteroids; constellation figure art.
-- [ ] Haptic tick when the AR crosshair locks onto an object.
+- [x] **Observing list, coordinate display, optic FOV ring** — favorites (`store/favorites.ts`,
+  star toggle on the info card, surfaced atop search); an Alt/Az ↔ RA/Dec toggle
+  (`utils/coordFormat.ts`); and an AR true-field ring for binoculars/telescopes
+  (`utils/optics.ts`). All pure-core + tested.
+- [x] **AR-lock haptic** — a single vibration when a guided target enters the crosshair, with
+  hysteresis so it fires once per lock (`utils/haptics.ts`).
+- [ ] **Comets / bright asteroids; constellation figure art** — *deliberately deferred for
+  accuracy.* Comets need live orbital elements (they change; brightness is unpredictable);
+  bright asteroids are computable with the planet engine but need *verified* epoch elements
+  that can't be reproduced/cross-checked here without ground truth, so any test would be
+  circular. Figure art is an illustration asset, not code. Won't ship unverifiable astronomy.
 
 ### D. Reach & polish (P2)
 - [ ] Accessibility (keyboard nav, ARIA labels, color-blind-safe palette, larger-text mode)
@@ -339,7 +363,7 @@ fold notable work into "Shipped". Keep this honest — it's the single source of
 
 ## Testing Approach
 
-TDD with Vitest (245 tests, 35 files). **Unit tests are co-located** with the code they
+TDD with Vitest (266 tests, 39 files). **Unit tests are co-located** with the code they
 cover (`src/**/*.test.ts`, declared once in `vite.config.ts`) — the Vitest/TS best practice:
 a test sits next to its module, moves with it, and imports it relatively. This is deliberate;
 don't relocate tests into a separate tree. The whole suite, by layer:
@@ -351,7 +375,8 @@ don't relocate tests into a separate tree. The whole suite, by layer:
 | `render/` | `canvas` (both projections + optimized AR projector parity) |
 | `components/` | `HitDetection` (`pickObject`) · `pose` · `Orientation` (heading calibration) · `Tour` (content + nav) · `Layers` (night-vision + Bortle state) · `altitudeSparkline` (SVG builder + altToY) |
 | `data/` | `stars` (HYG parser) · `deepSky` (catalog integrity) · `meteorShowers` (table integrity) |
-| `utils/` | `cache` (staleness) · `clock` (sky time) · `bortle` (light-pollution scale) · `shareUrl` (view-link encode/parse) · `fetchWithFallback` (mirror/retry, mocked `fetch`) |
+| `store/` | `favorites` (toggle/order pure helpers + persisted store) |
+| `utils/` | `cache` (staleness) · `clock` (sky time) · `bortle` (light-pollution) · `shareUrl` (view-link) · `coordFormat` (RA/Dec) · `optics` (FOV ring) · `haptics` (lock hysteresis) · `fetchWithFallback` (mirror/retry) |
 
 Ground truth for astronomy is cross-checked against Stellarium Web or JPL Horizons. Astronomy
 position tests use wide tolerances (±5°) — this is a visual app, not a navigation system

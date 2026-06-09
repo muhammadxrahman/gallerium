@@ -31,6 +31,9 @@ import { eclipticPath, milkyWayBand } from "./astronomy/referenceLines";
 import { requestLocation, cachedLocation, saveLocation } from "./utils/geo";
 import { getSkyTime, isLive, setSkyTime } from "./utils/clock";
 import { parseShareState, encodeShareState, type ShareState } from "./utils/shareUrl";
+import { getFavorites, withFavoritesFirst } from "./store/favorites";
+import { opticRingRadiusPx } from "./utils/optics";
+import { lockHaptic, vibrate } from "./utils/haptics";
 import { initLocationControl } from "./components/LocationControl";
 import { buildLayersControls, getLayers } from "./components/Layers";
 import { bortleLevel } from "./utils/bortle";
@@ -106,6 +109,10 @@ registerSW({
 // this module just performs the side effects it asks for (recompute, draw).
 const sched = createScheduler();
 
+// Haptic-lock state: pulse once when a guided target enters the AR crosshair (engine in
+// utils/haptics). Reset to armed whenever a new target is chosen.
+let lockArmed = true;
+
 function markDirty(): void {
   schedMarkDirty(sched);
 }
@@ -140,6 +147,7 @@ async function refreshData(): Promise<void> {
 // tapped Tonight-feed rows.
 function guideTo(meta: TargetMeta | null): void {
   currentTarget = meta;
+  lockArmed = true; // a fresh target can pulse once when reached
   if (!meta || !engine.observer) return;
   state.selected = targetSelection(meta, engine.bodies);
 
@@ -269,6 +277,11 @@ function renderGuideArrow(rc: RenderContext, centerAz: number, centerAlt: number
   const dAlt = aa.alt - centerAlt;
   const len = Math.hypot(dAz, dAlt);
 
+  // A short haptic tick the moment the target enters the crosshair (fires once per lock).
+  const h = lockHaptic(len, lockArmed);
+  lockArmed = h.armed;
+  if (h.pulse) vibrate();
+
   rc.ctx.save();
   rc.ctx.fillStyle = "rgba(120,220,255,0.95)";
   rc.ctx.strokeStyle = "rgba(120,220,255,0.95)";
@@ -393,6 +406,7 @@ function draw(): void {
 
   if (isAR) {
     const o = getOrientation();
+    if (layers.opticFov > 0) renderOpticRing(rc, layers.opticFov, 90 / zoom);
     renderArHud(rc);
     renderGuideArrow(rc, o.azimuth, o.altitude);
   } else {
@@ -400,6 +414,20 @@ function draw(): void {
   }
 
   updateInfoPanel(engine.observer);
+}
+
+// AR-only "true field" ring: a circle the size of the chosen optic's field of view.
+function renderOpticRing(rc: RenderContext, opticFov: number, viewFov: number): void {
+  const r = opticRingRadiusPx(opticFov, viewFov, Math.min(rc.width, rc.height));
+  if (r <= 0) return;
+  rc.ctx.save();
+  rc.ctx.strokeStyle = "rgba(120,220,255,0.45)";
+  rc.ctx.setLineDash([4, 4]);
+  rc.ctx.lineWidth = 1.5;
+  rc.ctx.beginPath();
+  rc.ctx.arc(rc.centerX, rc.centerY, r, 0, Math.PI * 2);
+  rc.ctx.stroke();
+  rc.ctx.restore();
 }
 
 function loop(t: number): void {
@@ -487,7 +515,10 @@ async function init() {
     markDirty();
     timeBtn?.classList.toggle("tb-btn-active", !isLive());
   });
-  const search = initSearch(() => engine.search.items, selectSearchResult);
+  const search = initSearch(
+    () => withFavoritesFirst(engine.search.items, getFavorites()),
+    selectSearchResult
+  );
   const tonight = initHighlights(() => engine.highlights(getSkyTime()), guideTo);
 
   // --- Bottom toolbar ---
