@@ -284,78 +284,49 @@ fold notable work into "Shipped". Keep this honest — it's the single source of
   altitude-tonight sparkline, tap-to-lock selection that tracks the object as time advances or
   is scrubbed, tappable Tonight rows (guide straight to a highlight), an observing list
   (favorites), alt-az↔RA/Dec coordinate display, an AR optic field-of-view ring, AR-lock
-  haptics, shareable view links + PNG export, light-pollution (Bortle) control, night-vision
-  (red) mode, pinch/drag zoom + pan.
+  haptics, AR compass calibration (persisted heading offset), shareable view links + PNG
+  export, light-pollution (Bortle) control, night-vision (red) mode, pinch/drag zoom + pan.
 - **UI / design** — consolidated bottom toolbar + settings sheet; a standalone top-right help
-  button opening a replayable, plain-language feature tour; SVG line-icon set (no emoji);
-  design tokens + unified class-based panel motion; loading overlay.
+  button opening a replayable, plain-language feature tour; a contextual reset-zoom button
+  (shown only while zoomed/panned); SVG line-icon set (no emoji); design tokens + unified
+  class-based panel motion; loading overlay.
 - **Platform** — offline-first PWA (Workbox service worker for the shell + IndexedDB for
   data) with a full PNG/maskable icon set and a rich web-manifest; resilient data loading
   (mirror fallback / retry / refresh / staleness warning); device-pose model; geolocation +
   manual location.
 - **Engineering** — TDD across astronomy, geometry, data, and the orchestration engine
-  (217 tests); `main.ts` refactored into a tested `engine/` (SkyEngine + pure
-  compute/search/highlights/scheduler/status) behind a thin DOM coordinator; GitHub Actions
-  CI that gates on test + build and auto-deploys `main` to GitHub Pages.
+  (266 tests), including a ground-truth accuracy suite (equinox/solstice Sun + ecliptic /
+  lunar-orbit invariants + JPL planet cross-checks) and the cache-staleness logic; `main.ts`
+  refactored into a tested `engine/` (SkyEngine + pure compute/search/highlights/scheduler/
+  status) behind a thin DOM coordinator; GitHub Actions CI that gates on test + build and
+  auto-deploys `main` to GitHub Pages.
 - **Docs** — detailed README (architecture, how-it-works, accuracy, data sources) + MIT
   license. (Demo media / screenshots pending real-device captures.)
 
 ### A. Proof & packaging (P0)
-- [x] **Heading calibration** — a persisted compass-offset slider (settings) applied in
-  `getOrientation()`, so AR can be aligned to the real sky on-device (`Orientation.ts`,
-  tested). *Still on the user:* confirm on a real phone that the offset sign/scale are right.
-- [x] **Ground-truth accuracy suite** (`astronomy/accuracy.test.ts`) — Sun declination at the
-  2025 equinoxes/solstices (definitional ground truth), the on-the-ecliptic invariant, the
-  Moon's orbital-inclination + perigee/apogee bounds across a year, and JPL planet
-  cross-checks with documented (3°) tolerances. Honest about each model's real precision.
-- [~] **Test coverage gaps** — the cache staleness logic is now pure + tested (`isExpired`);
-  full IndexedDB integration would need a `fake-indexeddb` dev-dep (install was blocked).
-  The DOM-bound parts of `main.ts` (draw, tap → hit-test) remain untested (no jsdom env).
 - [ ] **Demo media** *(user-owned)* — screen-capture GIF/video in the README, manifest
   `screenshots`, and a Lighthouse pass.
+- [ ] **Test coverage gaps** — the cache *staleness* logic is pure + tested (`isExpired`), but
+  full IndexedDB integration would need a `fake-indexeddb` dev-dep (install was blocked), and
+  the DOM-bound parts of `main.ts` (draw, tap → hit-test) remain untested (no jsdom env).
+- [ ] **On-device confirmations** — verify on a real iPhone: AR azimuth lines up (tune via the
+  compass-calibration slider) and the reset-zoom button works in Safari + the home-screen PWA.
 
-### B. Make it a real observing tool (P0/P1 — highest-impact additions)
-- [x] **Night-vision (red) mode** — `body.night-vision` red multiply veil (`#night-veil`)
-  toggled from settings; keeps only the red channel to preserve dark adaptation.
-- [x] **Light-pollution (Bortle)** — a 1–9 settings slider (`utils/bortle.ts`) that drives the
-  star limiting magnitude and a Milky Way visibility multiplier, so the sky matches a dark
-  site vs a city. Replaced the abstract star-density slider.
-- [x] **Altitude-tonight curve** — info-card SVG sparkline of the object's altitude over the
-  next 24h with the dark hours shaded (`astronomy/altitudeTrack.ts` + `components/altitudeSparkline.ts`).
-- [x] **Tappable Tonight feed** — each highlight carries a guide `target` (`engine/highlights.ts`);
-  tapping a row guides straight to it (planets, Moon, conjunctions, and meteor radiants via a
-  `point` target; the ISS pass stays non-tappable as it has no fixed position). Shares the
-  `guideTo()` path with search.
-- [x] **Meteor-shower highlights** — embedded major-shower table (`data/meteorShowers.ts`) +
-  a pure resolver (`engine/meteorShowers.ts`) that times each peak by solar longitude (λ☉,
-  accurate to hours, leap-year-proof) and reports the radiant's current altitude; surfaced in
-  the Tonight feed. The what/when/where is precise; the rate is the ideal ZHR, explicitly
-  labelled "ideal" since the real count depends on the year's stream, sky darkness, and Moon.
-- [x] **Share the view** — a "Share view" action builds a link encoding location + frozen
-  time + zoom + guided target (`utils/shareUrl.ts`), restored on load; uses the OS share sheet
-  or clipboard. A "Save image" action exports the canvas as a PNG. Section B complete.
-
-### C. Convenience & content (P1/P2)
-- [x] **Observing list, coordinate display, optic FOV ring** — favorites (`store/favorites.ts`,
-  star toggle on the info card, surfaced atop search); an Alt/Az ↔ RA/Dec toggle
-  (`utils/coordFormat.ts`); and an AR true-field ring for binoculars/telescopes
-  (`utils/optics.ts`). All pure-core + tested.
-- [x] **AR-lock haptic** — a single vibration when a guided target enters the crosshair, with
-  hysteresis so it fires once per lock (`utils/haptics.ts`).
+### B. Content depth (P1/P2)
 - [ ] **Comets / bright asteroids; constellation figure art** — *deliberately deferred for
   accuracy.* Comets need live orbital elements (they change; brightness is unpredictable);
   bright asteroids are computable with the planet engine but need *verified* epoch elements
   that can't be reproduced/cross-checked here without ground truth, so any test would be
   circular. Figure art is an illustration asset, not code. Won't ship unverifiable astronomy.
+  (If you bundle a verified small-body elements file, the propagation + a real ground-truth
+  test become straightforward.)
 
-### D. Reach & polish (P2)
+### C. Reach & polish (P2)
 - [ ] Accessibility (keyboard nav, ARIA labels, color-blind-safe palette, larger-text mode)
   + i18n.
 - [ ] Real-device performance profiling; layered canvases (static stars @ ~1 fps + dynamic
   satellite layer) if the sat-cadence redraw bites; smaller first load (pre-trimmed
   mag ≤ 6.5 star JSON / progressive).
-- [ ] Visual leftovers: Moon earthshine/libration, smooth map↔sky crossfade. (Star twinkle
-  deliberately deferred — continuous redraw would break the battery model.)
 - [ ] Visual leftovers: Moon earthshine/libration, smooth map↔sky crossfade. (Star twinkle
   deliberately deferred — continuous redraw would break the battery model.)
 
