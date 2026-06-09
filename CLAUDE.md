@@ -336,8 +336,11 @@ npm run dev
 | Moon | Computed (no fetch) | Real-time |
 | Sun | Computed (no fetch) | Real-time |
 
-Note: HYG row id 0 is the Sun ("Sol") at RA/Dec 0,0 — `parseCSV` skips it; the real
-Sun is computed in `astronomy/sun.ts`.
+Note: HYG row id 0 is the Sun ("Sol") at RA/Dec 0,0 (the vernal-equinox point on the
+ecliptic). `parseCSV` skips it on fresh fetches, and `precessCatalog` (engine/compute.ts)
+filters `id === 0` again at use time so a catalog **cached before that skip existed**
+can't render a second sun on the ecliptic. The real Sun is computed in `astronomy/sun.ts`.
+(Same belt-and-suspenders pattern as the quoted-empty `""` name sanitization.)
 
 ---
 

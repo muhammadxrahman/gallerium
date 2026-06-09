@@ -33,6 +33,19 @@ describe("precessCatalog", () => {
     expect(moved).toBeGreaterThan(0.3);
     expect(moved).toBeLessThan(1);
   });
+
+  // Regression: a catalog cached before parseCSV learned to skip HYG row id 0 still
+  // carries "Sol" at RA/Dec 0,0. It must not survive into the rendered/searched set,
+  // or it shows up as a second sun on the ecliptic.
+  it("drops HYG row id 0 (Sol) even from stale cached data", () => {
+    const out = precessCatalog(
+      [{ id: 0, ra: 0, dec: 0, magnitude: -26.7, colorIndex: 0, name: "Sol" }, star(2, 100, 20, "Vega")],
+      new Date("2024-01-01T00:00:00Z")
+    );
+    expect(out.map((s) => s.id)).not.toContain(0);
+    expect(out.map((s) => s.name)).not.toContain("Sol");
+    expect(out).toHaveLength(1);
+  });
 });
 
 describe("toApparentHorizontal", () => {

@@ -31,13 +31,19 @@ export interface SkyBodies {
 
 export const EMPTY_SKY: SkyBodies = { stars: [], planets: [], deepSky: [], moon: null, sun: null, lst: 0 };
 
-// Precess the J2000 catalog to a given epoch and sanitize names (cached catalogs
-// parsed before the quote fix can carry a stray `""`).
+// Precess the J2000 catalog to a given epoch and sanitize the data. Both guards also
+// repair *cached* catalogs parsed before the corresponding parser fix existed (the
+// cache can outlive a code change): drop HYG row id 0 — "Sol", the Sun, sitting at
+// RA/Dec 0,0 (the vernal-equinox point on the ecliptic), which would otherwise render
+// as a second sun next to the real one computed in astronomy/sun.ts — and collapse the
+// quoted-empty `""` proper name to undefined.
 export function precessCatalog(stars: Star[], epoch: Date): Star[] {
-  return stars.map((s) => {
-    const { ra, dec } = precessFromJ2000(s.ra, s.dec, epoch);
-    return { ...s, ra, dec, name: cleanProperName(s.name) };
-  });
+  return stars
+    .filter((s) => s.id !== 0)
+    .map((s) => {
+      const { ra, dec } = precessFromJ2000(s.ra, s.dec, epoch);
+      return { ...s, ra, dec, name: cleanProperName(s.name) };
+    });
 }
 
 // Precess the deep-sky catalog (far-field objects, same J2000→date treatment as stars).
