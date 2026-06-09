@@ -13,23 +13,40 @@ export default defineConfig({
       // home-screen apps, which stay resident and otherwise never see new deploys.
       registerType: 'autoUpdate',
       injectRegister: false,
-      includeAssets: ['icon.svg'],
+      includeAssets: [
+        'icon.svg',
+        'icon-192.png',
+        'icon-512.png',
+        'icon-maskable-512.png',
+        'apple-touch-icon-180.png',
+      ],
       manifest: {
+        id: '/gallerium/',
         name: 'Gallerium',
         short_name: 'Gallerium',
         description:
-          'Real-time sky awareness — stars, planets, Moon, and satellites from your location.',
+          'Real-time sky awareness: stars, planets, Moon, and satellites from your location.',
+        lang: 'en',
+        dir: 'ltr',
+        categories: ['education', 'utilities'],
         display: 'standalone',
         orientation: 'portrait',
+        scope: '/gallerium/',
+        start_url: '/gallerium/',
         background_color: '#000008',
         theme_color: '#000008',
+        // PNG icons broaden install support (iOS ignores SVG apple-touch icons); the
+        // maskable variant carries a safe zone so Android's circular mask doesn't clip it.
         icons: [
-          { src: 'icon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any maskable' },
+          { src: 'icon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any' },
+          { src: 'icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
+          { src: 'icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
+          { src: 'icon-maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
         ],
       },
       workbox: {
         // Precache the full app shell so it loads with no network.
-        globPatterns: ['**/*.{js,css,html,svg}'],
+        globPatterns: ['**/*.{js,css,html,svg,png,webmanifest}'],
         navigateFallback: 'index.html',
         // Bonus offline safety net for the cross-origin data sources. The app's
         // IndexedDB layer remains the primary cache; this just adds redundancy.

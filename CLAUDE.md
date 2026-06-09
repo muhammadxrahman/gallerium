@@ -273,8 +273,11 @@ truth for what's left.
 - [ ] Real-device performance profiling; layered canvases (static stars @ ~1 fps + dynamic
   satellite layer) if the full-scene redraw at sat cadence bites; smaller first load
   (pre-trimmed mag ≤ 6.5 star JSON / progressive).
-- [ ] PWA polish: PNG icons (broader install support) + manifest screenshots / categories;
-  Lighthouse pass.
+- [~] PWA polish: PNG icons (192/512 + 512 maskable with safe zone + 180 apple-touch),
+  generated from `public/icon.svg` via `npm run icons` (headless Chrome → sips; macOS).
+  Manifest gained `id`/`scope`/`start_url`/`lang`/`dir`/`categories` and the PNG icon set;
+  index.html serves a PNG apple-touch icon (iOS ignores SVG ones). Still TODO: manifest
+  `screenshots` (needs the real device captures) + a formal Lighthouse pass.
 - [ ] Visual leftovers: Moon earthshine/libration, smooth map↔sky crossfade, first-run
   onboarding tour. (Star twinkle deliberately deferred — continuous redraw would break the
   battery model.)
