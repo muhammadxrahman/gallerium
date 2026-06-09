@@ -1,11 +1,14 @@
 import { type RenderContext, type AltAzProjector } from "./canvas";
 import { drawLabel } from "./labels";
+import { twinkle, clamp01 } from "./animate";
 import type { Star } from "../data/stars";
 
 export interface RenderedStar extends Star {
   az: number;
   alt: number;
 }
+
+const TWINKLE_MAG = 2.5; // only the brighter stars scintillate (tasteful + cheap)
 
 // Map B-V color index to a CSS color
 function starColor(ci: number): string {
@@ -60,31 +63,45 @@ function drawSpikes(
 // stars fainter than the chosen limiting magnitude (light-pollution control).
 // `project` maps alt/az to screen pixels (or null when it shouldn't be drawn), so
 // the same renderer serves both the map dome and the AR view.
+// `timeMs` drives subtle scintillation on the brightest stars (0 = no twinkle).
+// `reveal` (0..1) ramps the field in during the first-load reveal, brightest first;
+// it also heightens twinkle while < 1 so the sky sparkles to life.
 export function renderStars(
   rc: RenderContext,
   stars: RenderedStar[],
   project: AltAzProjector,
   visibility = 1,
-  magLimit = 6.5
+  magLimit = 6.5,
+  timeMs = 0,
+  reveal = 1
 ): void {
   if (visibility <= 0.01) return;
+  const twinkleAmp = 0.16 + (1 - reveal) * 0.35; // sparklier during the reveal, calm after
 
   for (const star of stars) {
     if (star.magnitude > magLimit) continue;
     const p = project(star.alt, star.az);
     if (!p) continue;
 
+    // Reveal stagger: brighter (lower-magnitude) stars reach full alpha first.
+    const rv = reveal >= 1 ? 1 : clamp01(reveal * 1.4 - (star.magnitude / magLimit) * 0.4);
+    if (rv <= 0.01) continue;
+
+    // Scintillation on the brighter stars only (cheap: a few dozen sines).
+    const tw =
+      timeMs > 0 && star.magnitude < TWINKLE_MAG ? 1 + twinkleAmp * twinkle(timeMs, star.id) : 1;
+
     const [x, y] = p;
     const radius = starRadius(star.magnitude);
     const color = starColor(star.colorIndex);
-    const alpha = starAlpha(star.magnitude) * visibility;
+    const alpha = starAlpha(star.magnitude) * visibility * rv * tw;
 
     // Soft glow for the brightest stars.
     if (star.magnitude < 1.5) {
       const glow = rc.ctx.createRadialGradient(x, y, 0, x, y, radius * 4.5);
       glow.addColorStop(0, color);
       glow.addColorStop(1, "transparent");
-      rc.ctx.globalAlpha = 0.35 * visibility;
+      rc.ctx.globalAlpha = 0.35 * visibility * rv * tw;
       rc.ctx.fillStyle = glow;
       rc.ctx.beginPath();
       rc.ctx.arc(x, y, radius * 4.5, 0, Math.PI * 2);
@@ -100,7 +117,7 @@ export function renderStars(
 
     // Diffraction spikes on the showpiece stars.
     if (star.magnitude < 1.0) {
-      drawSpikes(rc.ctx, x, y, radius * 6, color, 0.5 * visibility);
+      drawSpikes(rc.ctx, x, y, radius * 6, color, 0.5 * visibility * rv);
     }
   }
 

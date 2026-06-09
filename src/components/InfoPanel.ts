@@ -13,7 +13,8 @@ import { icon } from "./icons";
 import type { Observer } from "../astronomy/coordinates";
 
 let panel: HTMLDivElement | null = null;
-let lastObserver: Observer | null = null;
+let lastHtml = ""; // diff guard: only touch the DOM when the card content actually changes
+let suppressUntil = 0; // brief pause after a ★ toggle so its pop animation isn't clobbered
 
 function clockStr(d: Date): string {
   return d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
@@ -65,15 +66,23 @@ export function initInfoPanel(): void {
   panel.id = "info-panel";
   document.body.appendChild(panel);
 
-  // Favorite (★) toggle, delegated: add/remove the selected object from the observing
-  // list and re-render so the star fills/empties immediately.
+  // Favorite (★) toggle, delegated. Mutate the live button (fill + label + a scale pop)
+  // and pause card rebuilds briefly so the pop plays out instead of being destroyed by
+  // the next frame's update.
   panel.addEventListener("click", (e) => {
     const btn = (e.target as HTMLElement).closest(".fav-btn") as HTMLElement | null;
     const id = btn?.dataset.fav;
-    if (id) {
-      toggleFavorite(id);
-      updateInfoPanel(lastObserver);
-    }
+    if (!btn || !id) return;
+    const nowFav = toggleFavorite(id);
+    const label = nowFav ? "Remove from saved" : "Save to observing list";
+    btn.classList.toggle("fav-on", nowFav);
+    btn.setAttribute("aria-label", label);
+    btn.setAttribute("title", label);
+    suppressUntil = performance.now() + 350;
+    btn.animate?.(
+      [{ transform: "scale(1)" }, { transform: "scale(1.4)" }, { transform: "scale(1)" }],
+      { duration: 300, easing: "ease-out" }
+    );
   });
 }
 
@@ -124,11 +133,13 @@ function card(
 
 export function updateInfoPanel(observer: Observer | null = null): void {
   if (!panel) return;
-  lastObserver = observer;
-  const obj = state.selected;
+  // Hold off rebuilding for a moment after a favorite toggle so the ★ pop completes.
+  if (performance.now() < suppressUntil) return;
 
+  const obj = state.selected;
   if (!obj) {
     panel.classList.remove("show");
+    lastHtml = "";
     return;
   }
   panel.classList.add("show");
@@ -137,9 +148,10 @@ export function updateInfoPanel(observer: Observer | null = null): void {
   const meta = metaFromSelection(obj);
   const favId = meta ? metaToSearchId(meta) : null;
 
+  let html = "";
   if (obj.type === "star") {
     const s = obj.data;
-    panel.innerHTML = card("STAR", s.name ?? `Star #${s.id}`, [
+    html = card("STAR", s.name ?? `Star #${s.id}`, [
       ...coordRows(s),
       ["Magnitude", s.magnitude.toFixed(2)],
       ["Color index", s.colorIndex.toFixed(2)],
@@ -147,7 +159,7 @@ export function updateInfoPanel(observer: Observer | null = null): void {
     ], altChart(s.ra, s.dec, observer), favId);
   } else if (obj.type === "planet") {
     const p = obj.data;
-    panel.innerHTML = card("PLANET", p.name, [
+    html = card("PLANET", p.name, [
       ...coordRows(p),
       ["Magnitude", p.magnitude.toFixed(1)],
       ["Illumination", `${Math.round(p.phase * 100)}%`],
@@ -155,13 +167,13 @@ export function updateInfoPanel(observer: Observer | null = null): void {
     ], altChart(p.ra, p.dec, observer), favId);
   } else if (obj.type === "sun") {
     const s = obj.data;
-    panel.innerHTML = card("SUN", "Sun", [
+    html = card("SUN", "Sun", [
       ...coordRows(s),
       ...riseSetRows(s.ra, s.dec, observer, STD_ALT_SUN),
     ], altChart(s.ra, s.dec, observer), favId);
   } else if (obj.type === "moon") {
     const m = obj.data;
-    panel.innerHTML = card("MOON", "Moon", [
+    html = card("MOON", "Moon", [
       ...coordRows(m),
       ["Illumination", `${Math.round(m.illumination * 100)}%`],
       ["Phase", moonPhaseName(m.illumination, m.waxing)],
@@ -169,18 +181,26 @@ export function updateInfoPanel(observer: Observer | null = null): void {
     ], altChart(m.ra, m.dec, observer), favId);
   } else if (obj.type === "satellite") {
     const s = obj.data;
-    panel.innerHTML = card("SATELLITE", s.name, [
+    html = card("SATELLITE", s.name, [
       ["Altitude", `${s.alt.toFixed(1)}°`],
       ["Azimuth", `${s.az.toFixed(1)}°`],
       ["Orbital height", `${s.altitude.toFixed(0)} km`],
     ]);
   } else if (obj.type === "deepsky") {
     const d = obj.data;
-    panel.innerHTML = card("DEEP SKY", d.name === d.id ? d.id : `${d.name} (${d.id})`, [
+    html = card("DEEP SKY", d.name === d.id ? d.id : `${d.name} (${d.id})`, [
       ["Type", DEEP_SKY_KIND_LABEL[d.kind]],
       ...coordRows(d),
       ["Magnitude", d.magnitude.toFixed(1)],
       ...riseSetRows(d.ra, d.dec, observer, STD_ALT_STAR),
     ], altChart(d.ra, d.dec, observer), favId);
+  }
+
+  // Only touch the DOM when the rendered content actually changed — this stops the panel
+  // rebuilding every frame (it's called from draw()), which would otherwise kill the ★
+  // pop and waste work.
+  if (html && html !== lastHtml) {
+    panel.innerHTML = html;
+    lastHtml = html;
   }
 }

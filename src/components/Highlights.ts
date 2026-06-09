@@ -35,7 +35,8 @@ export function initHighlights(
       .join("");
     panel.innerHTML =
       title +
-      (rows || `<div style="color:rgba(255,255,255,0.5);font-size:13px">Nothing notable right now.</div>`);
+      (rows ||
+        `<div style="color:rgba(255,255,255,0.55);font-size:13px;line-height:1.5">Clear skies for now — check back after dark for tonight's highlights.</div>`);
   }
 
   // Delegate clicks: a tapped row guides to its target and closes the panel.

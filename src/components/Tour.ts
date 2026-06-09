@@ -66,6 +66,12 @@ export function clampStep(index: number, total: number): number {
   return Math.max(0, Math.min(total - 1, index));
 }
 
+// Should the tour auto-open for a first-time visitor? `flag` is the persisted
+// "seen tour" value (null when never seen). Shown exactly once.
+export function shouldShowFirstRun(flag: string | null): boolean {
+  return flag !== "1";
+}
+
 export function initTour(): { open: () => void } {
   const overlay = document.createElement("div");
   overlay.className = "overlay";

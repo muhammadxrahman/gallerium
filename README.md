@@ -13,7 +13,7 @@ A real-time, offline-first sky map that computes the positions of stars, planets
 
 Every position in Gallerium is derived from first principles rather than fetched from a service. The inputs are a star catalog (HYG v4.1), a satellite element set (CelesTrak TLEs), the observer's latitude and longitude, and the system clock. From those, the app computes apparent topocentric positions: where each object actually appears in the sky for the observer's location at the current instant.
 
-This constraint defines the engineering: spherical coordinate transforms, orbital propagation, atmospheric and geometric corrections, a Canvas 2D renderer with two projections, an offline caching strategy, and a render loop bounded for low battery use. The astronomy is validated against Stellarium and JPL Horizons, and the codebase has 266 automated tests.
+This constraint defines the engineering: spherical coordinate transforms, orbital propagation, atmospheric and geometric corrections, a Canvas 2D renderer with two projections, an offline caching strategy, and a render loop bounded for low battery use. The astronomy is validated against Stellarium and JPL Horizons, and the codebase has 279 automated tests.
 
 ## Features
 
@@ -36,6 +36,7 @@ This constraint defines the engineering: spherical coordinate transforms, orbita
 | Observing list | Save any object to a favorites list (a star toggle on its info card); saved objects float to the top of search. |
 | Coordinate display | Switch the info card between horizontal (Alt/Az) and equatorial (RA/Dec) coordinates. |
 | Optic field ring | Overlay the true field of view of a chosen binocular or telescope on the AR view. |
+| Living sky | A cinematic first-load reveal (stars fade in brightest-first, constellation lines follow) and a gentle scintillation on the brightest stars that settles to static when idle, so the battery model holds. A first-time visitor is offered the tour automatically. |
 
 <p align="center">
   <img src="docs/screenshots/02-ar-view.png" alt="AR mode overlaying constellation lines and a planet label aligned to the pointed sky direction" width="300">
@@ -91,7 +92,7 @@ The map and AR views share a single draw path and differ only in projection. The
 
 ### Render loop
 
-Computing alt/az for ~9,000 stars depends only on time and location, not on pan or zoom. The loop recomputes bodies on a 1 s cadence and satellites at 250 ms, and redraws only on an actual change: a recompute, a zoom/pan, an orientation move past a 0.05° threshold, or a tap. An idle map runs near 1 fps. The decision logic is a pure, unit-tested state machine.
+Computing alt/az for ~9,000 stars depends only on time and location, not on pan or zoom. The loop recomputes bodies on a 1 s cadence and satellites at 250 ms, and redraws only on an actual change: a recompute, a zoom/pan, an orientation move past a 0.05° threshold, or a tap. An idle map runs near 1 fps. The decision logic is a pure, unit-tested state machine. Animation stays inside this model: the first-load reveal and the transient delight rings are time-bounded, and the living-sky twinkle runs a low-rate ambient redraw only while it is dark and you have recently interacted, then settles to static.
 
 ### Offline
 
@@ -131,7 +132,7 @@ utils/  clock, geolocation, fetch-with-fallback, math
 | Language | TypeScript (strict) |
 | Rendering | Canvas 2D (no WebGL, no Three.js) |
 | Build | Vite |
-| Tests | Vitest, 266 tests |
+| Tests | Vitest, 279 tests |
 | Offline / PWA | `vite-plugin-pwa` (Workbox) + IndexedDB |
 | Orbit propagation | `satellite.js` (SGP4) |
 | CI/CD | GitHub Actions: test and build gate, auto-deploy to GitHub Pages |
@@ -141,7 +142,7 @@ utils/  clock, geolocation, fetch-with-fallback, math
 
 ## Testing and validation
 
-266 automated tests cover the astronomy layer, the geometry of both projections, the data parsers, the deep-sky catalog, the resilient fetch logic, and the orchestration engine (compute pipeline, search/guide resolver, Tonight feed, render-loop scheduler).
+279 automated tests cover the astronomy layer, the geometry of both projections, the data parsers, the deep-sky catalog, the resilient fetch logic, and the orchestration engine (compute pipeline, search/guide resolver, Tonight feed, render-loop scheduler).
 
 Validation uses two methods:
 

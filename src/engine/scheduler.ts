@@ -10,6 +10,7 @@
 export const BODIES_INTERVAL_MS = 1000; // stars, planets, Moon, Sun — slow movers
 export const SAT_INTERVAL_MS = 250; // satellites move fast (ISS up to ~1°/s)
 export const ORI_EPSILON = 0.05; // ignore sub-0.05° orientation jitter (degrees)
+export const AMBIENT_INTERVAL_MS = 100; // ~10fps redraw for star twinkle, only while active
 
 export interface SchedulerState {
   lastBodiesAt: number;
@@ -17,6 +18,7 @@ export interface SchedulerState {
   lastViewVersion: number;
   lastOriAz: number;
   lastOriAlt: number;
+  lastAmbientAt: number;
   needsRedraw: boolean;
 }
 
@@ -27,6 +29,7 @@ export function createScheduler(): SchedulerState {
     lastViewVersion: -1,
     lastOriAz: NaN,
     lastOriAlt: NaN,
+    lastAmbientAt: -Infinity,
     needsRedraw: true, // draw the first frame
   };
 }
@@ -50,6 +53,9 @@ export interface TickInput {
   viewVersion: number; // bumped by zoom/pan; a change forces a redraw
   // Current device orientation when in AR (sky view + listening); null otherwise.
   orientation: { azimuth: number; altitude: number } | null;
+  // While true, request a low-rate redraw so star twinkle animates (the "living sky").
+  // The caller gates this on night + recent interaction so it settles to static when idle.
+  ambientActive?: boolean;
 }
 
 export interface TickResult {
@@ -89,6 +95,14 @@ export function tick(s: SchedulerState, input: TickInput): TickResult {
       s.lastOriAlt = altitude;
       redraw = true;
     }
+  }
+
+  // Living-sky ambient cadence: a gentle ~10fps redraw while active, so twinkle animates
+  // without an always-on loop. Only advances its clock while active, so re-activating
+  // fires immediately rather than after a stale gap.
+  if (input.ambientActive && input.t - s.lastAmbientAt >= AMBIENT_INTERVAL_MS) {
+    s.lastAmbientAt = input.t;
+    redraw = true;
   }
 
   s.needsRedraw = false;

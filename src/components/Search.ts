@@ -44,7 +44,7 @@ export function initSearch(
     if (matches.length === 0) {
       const empty = document.createElement("div");
       empty.style.cssText = "padding:12px;color:rgba(255,255,255,0.5);font-size:13px;";
-      empty.textContent = q ? "No matches" : "Type to search";
+      empty.textContent = q ? "No matches — try another name" : "Search the sky — a star, planet, or constellation";
       list.appendChild(empty);
       return;
     }

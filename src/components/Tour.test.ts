@@ -1,6 +1,15 @@
 import { describe, it, expect } from "vitest";
-import { TOUR_STEPS, clampStep } from "./Tour";
+import { TOUR_STEPS, clampStep, shouldShowFirstRun } from "./Tour";
 import { ICON_NAMES } from "./icons";
+
+describe("shouldShowFirstRun", () => {
+  it("shows the tour when the flag was never set", () => {
+    expect(shouldShowFirstRun(null)).toBe(true);
+  });
+  it("does not show it once seen", () => {
+    expect(shouldShowFirstRun("1")).toBe(false);
+  });
+});
 
 describe("TOUR_STEPS", () => {
   it("has a sensible number of steps", () => {

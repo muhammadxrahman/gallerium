@@ -52,6 +52,7 @@ src/
 │   ├── constellations.ts # Constellation lines + decluttered names
 │   ├── grid.ts           # Equatorial grid + ecliptic polylines
 │   ├── milkyway.ts       # Additive soft-blob galactic band
+│   ├── animate.ts        # Pure reveal/twinkle math (revealAlpha, twinkle, clamp01)
 │   └── labels.ts         # Frame-scoped label declutterer (drawLabel)
 ├── components/       # DOM, device APIs, user interaction
 │   ├── InfoPanel.ts      # Tap-to-identify overlay + altitude-tonight sparkline
@@ -202,6 +203,19 @@ idle map view sits near 1 fps instead of 60. To force a recompute (e.g. location
 call `invalidatePositions()`; to force a redraw call `markDirty()` (both delegate to the
 scheduler).
 
+**Animation is bounded, so draw-on-change survives.** Three things add motion without an
+always-on loop. (1) **Bounded transients** in main.ts: a `pulses` registry (tap-select flash,
+AR target-arrival ring) and the one-time first-load **reveal**; while any is live, `loop()`
+draws every frame, then stops. The reveal passes a 0→1 `revealProgress` into `draw()`, which
+hands each layer its own window via `revealAlpha` (stars fade in brightest-first ~0.28–0.85,
+constellation lines ~0.55–1.0). (2) **Living-sky twinkle**: `render/stars.ts` scintillates
+only the brightest stars (mag < 2.5) via the pure `twinkle(t, id)`; it animates because the
+scheduler's **ambient cadence** (`AMBIENT_INTERVAL_MS`, ~10 fps) requests redraws while
+`ambientActive` — which main gates on *stars-visible AND interacted within ~10 s* — then
+settles to fully static. (3) **First-run onboarding**: after the reveal, `shouldShowFirstRun`
+auto-opens the tour once (localStorage flag). All motion math (`revealAlpha`, `twinkle`,
+`clamp01`) lives in pure `render/animate.ts` and is unit-tested.
+
 **initCanvas only reallocates on size change.** Assigning `canvas.width/height`
 reallocates+clears the backing store, so it's guarded behind a size check; the DPR scale
 uses `setTransform` (idempotent), not `scale` (which would compound each frame).
@@ -277,7 +291,8 @@ fold notable work into "Shipped". Keep this honest — it's the single source of
   no per-star `acos`, a |Δalt| broad-phase cull) so it stays smooth while the phone moves.
   Day/night sky, constellations + names, Milky Way, ecliptic/grid/meridian, per-kind deep-sky
   glyphs, planet glyphs (Saturn's rings, Jupiter's bands), diffraction spikes, label
-  declutter, vignette/glow. Throttled draw-on-change loop.
+  declutter, vignette/glow. Throttled draw-on-change loop with a cinematic first-load reveal,
+  bounded delight transients (tap flash, AR arrival ring), and a gentle living-sky twinkle.
 - **Features** — time travel (scrub any date/time), search + "guide me there" (map centering /
   AR arrow), Tonight highlights feed (incl. active meteor showers, timed by solar longitude;
   ideal-ZHR rate clearly labelled), tap-to-identify info card with rise/set + an
@@ -287,15 +302,16 @@ fold notable work into "Shipped". Keep this honest — it's the single source of
   haptics, AR compass calibration (persisted heading offset), shareable view links + PNG
   export, light-pollution (Bortle) control, night-vision (red) mode, pinch/drag zoom + pan.
 - **UI / design** — consolidated bottom toolbar + settings sheet; a standalone top-right help
-  button opening a replayable, plain-language feature tour; a contextual reset-zoom button
-  (shown only while zoomed/panned); SVG line-icon set (no emoji); design tokens + unified
-  class-based panel motion; loading overlay.
+  button opening a replayable, plain-language feature tour that auto-opens once for first-time
+  visitors; a contextual reset-zoom button; favorite-★ pop + tap-select flash + AR
+  arrival-ring delight moments; warmer empty states; SVG line-icon set (no emoji); design
+  tokens + unified class-based panel motion; cinematic first-load reveal + loading overlay.
 - **Platform** — offline-first PWA (Workbox service worker for the shell + IndexedDB for
   data) with a full PNG/maskable icon set and a rich web-manifest; resilient data loading
   (mirror fallback / retry / refresh / staleness warning); device-pose model; geolocation +
   manual location.
 - **Engineering** — TDD across astronomy, geometry, data, and the orchestration engine
-  (266 tests), including a ground-truth accuracy suite (equinox/solstice Sun + ecliptic /
+  (279 tests), including a ground-truth accuracy suite (equinox/solstice Sun + ecliptic /
   lunar-orbit invariants + JPL planet cross-checks) and the cache-staleness logic; `main.ts`
   refactored into a tested `engine/` (SkyEngine + pure compute/search/highlights/scheduler/
   status) behind a thin DOM coordinator; GitHub Actions CI that gates on test + build and
@@ -327,14 +343,16 @@ fold notable work into "Shipped". Keep this honest — it's the single source of
 - [ ] Real-device performance profiling; layered canvases (static stars @ ~1 fps + dynamic
   satellite layer) if the sat-cadence redraw bites; smaller first load (pre-trimmed
   mag ≤ 6.5 star JSON / progressive).
-- [ ] Visual leftovers: Moon earthshine/libration, smooth map↔sky crossfade. (Star twinkle
-  deliberately deferred — continuous redraw would break the battery model.)
+- [ ] Visual leftovers: Moon earthshine/libration, smooth map↔sky crossfade, deeper render
+  realism (Milky Way dust lanes/color, atmospheric blue-shift, full-canvas bloom). (Star
+  twinkle is now shipped as a *bounded* living-sky loop — it settles to static when idle, so
+  it doesn't break the battery model.)
 
 ---
 
 ## Testing Approach
 
-TDD with Vitest (266 tests, 39 files). **Unit tests are co-located** with the code they
+TDD with Vitest (279 tests, 40 files). **Unit tests are co-located** with the code they
 cover (`src/**/*.test.ts`, declared once in `vite.config.ts`) — the Vitest/TS best practice:
 a test sits next to its module, moves with it, and imports it relatively. This is deliberate;
 don't relocate tests into a separate tree. The whole suite, by layer:
@@ -342,8 +360,8 @@ don't relocate tests into a separate tree. The whole suite, by layer:
 | Layer | Test files (`*.test.ts`) — what each covers |
 |---|---|
 | `astronomy/` | `coordinates` (eq→horizontal) · `sun` · `moon` · `planets` (7, Kepler + mags) · `precession` · `parallax` · `refraction` · `riseset` (+twilight) · `passes` · `satellites` (SGP4 + sunlit) · `referenceLines` · `altitudeTrack` (24h altitude/Sun tracks) · **`accuracy`** (cross-cutting ground-truth suite) |
-| `engine/` | `compute` · `search` · `highlights` (Tonight feed + meteor-shower text) · `meteorShowers` (λ☉ peak timing + radiant altitude) · `scheduler` (cadence + draw-on-change) · `status` · `SkyEngine` (load→locate→compute lifecycle) |
-| `render/` | `canvas` (both projections + optimized AR projector parity) |
+| `engine/` | `compute` · `search` · `highlights` (Tonight feed + meteor-shower text) · `meteorShowers` (λ☉ peak timing + radiant altitude) · `scheduler` (cadence + draw-on-change + ambient) · `status` · `SkyEngine` (load→locate→compute lifecycle) |
+| `render/` | `canvas` (both projections + optimized AR projector parity) · `animate` (reveal/twinkle math) |
 | `components/` | `HitDetection` (`pickObject`) · `pose` · `Orientation` (heading calibration) · `Tour` (content + nav) · `Layers` (night-vision + Bortle state) · `altitudeSparkline` (SVG builder + altToY) |
 | `data/` | `stars` (HYG parser) · `deepSky` (catalog integrity) · `meteorShowers` (table integrity) |
 | `store/` | `favorites` (toggle/order pure helpers + persisted store) |

@@ -7,6 +7,7 @@ import {
   BODIES_INTERVAL_MS,
   SAT_INTERVAL_MS,
   ORI_EPSILON,
+  AMBIENT_INTERVAL_MS,
 } from "./scheduler";
 
 const noOri = { hasTles: true, viewVersion: 0, orientation: null };
@@ -111,5 +112,35 @@ describe("markDirty / invalidate", () => {
     expect(r.recomputeBodies).toBe(true);
     expect(r.recomputeSatellites).toBe(true);
     expect(r.redraw).toBe(true);
+  });
+});
+
+describe("ambient cadence (living sky)", () => {
+  const idle = { hasTles: false, viewVersion: 0, orientation: null };
+
+  it("redraws at ~AMBIENT_INTERVAL_MS while active, and not faster", () => {
+    const s = createScheduler();
+    tick(s, { t: 5000, ...idle, ambientActive: true }); // settle + first ambient tick
+    // Too soon → no ambient redraw (and nothing else changed).
+    expect(tick(s, { t: 5000 + AMBIENT_INTERVAL_MS - 1, ...idle, ambientActive: true }).redraw).toBe(false);
+    // At the interval → ambient redraw fires.
+    expect(tick(s, { t: 5000 + AMBIENT_INTERVAL_MS, ...idle, ambientActive: true }).redraw).toBe(true);
+  });
+
+  it("does nothing when inactive (stays draw-on-change)", () => {
+    const s = createScheduler();
+    tick(s, { t: 5000, ...idle }); // settle, needsRedraw cleared, lastBodiesAt = 5000
+    // Probes stay inside the 1s bodies window so only the ambient gate could fire.
+    expect(tick(s, { t: 5050, ...idle, ambientActive: false }).redraw).toBe(false);
+    expect(tick(s, { t: 5300, ...idle, ambientActive: false }).redraw).toBe(false);
+  });
+
+  it("re-activating fires immediately rather than after a stale gap", () => {
+    const s = createScheduler();
+    tick(s, { t: 1000, ...idle, ambientActive: true }); // ambient clock = 1000
+    // Long inactive stretch (clock not advanced while inactive).
+    tick(s, { t: 20_000, ...idle, ambientActive: false });
+    // Re-activate well past the interval → fires this tick.
+    expect(tick(s, { t: 20_050, ...idle, ambientActive: true }).redraw).toBe(true);
   });
 });

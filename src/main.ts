@@ -14,6 +14,7 @@ import {
   type AltAzProjector,
 } from "./render/canvas";
 import { renderStars } from "./render/stars";
+import { revealAlpha, clamp01 } from "./render/animate";
 import { renderDeepSky } from "./render/deepSky";
 import { renderPlanets } from "./render/planets";
 import { renderSatellites } from "./render/satellites";
@@ -41,7 +42,7 @@ import { initTimeControl } from "./components/TimeControl";
 import { initSearch } from "./components/Search";
 import { initHighlights } from "./components/Highlights";
 import { createToolbar, tbContent } from "./components/Toolbar";
-import { initTour } from "./components/Tour";
+import { initTour, shouldShowFirstRun } from "./components/Tour";
 import { icon } from "./components/icons";
 import { initZoom, getZoom, setZoom, getPan, getViewVersion, recentlyInteracted, centerOn, resetView } from "./components/Zoom";
 import { state } from "./store/state";
@@ -120,6 +121,31 @@ const sched = createScheduler();
 // Haptic-lock state: pulse once when a guided target enters the AR crosshair (engine in
 // utils/haptics). Reset to armed whenever a new target is chosen.
 let lockArmed = true;
+
+// --- Animation state (all bounded, so the draw-on-change battery model survives) ---
+const REVEAL_MS = 2400; // one-time cinematic first-load reveal
+const AMBIENT_IDLE_MS = 10_000; // twinkle keeps animating this long after an interaction
+let revealStart = -1; // set on the first draw; -1 = not started
+let lastInteractionAt = 0; // gates the living-sky ambient loop
+let lastSeenViewVersion = -1; // detect zoom/pan as an interaction
+
+// Transient expanding rings (tap-to-select flash, AR target-arrival). Each fades over `dur`.
+interface Pulse {
+  x: number;
+  y: number;
+  start: number;
+  dur: number;
+  color: string;
+}
+let pulses: Pulse[] = [];
+
+function noteInteraction(): void {
+  lastInteractionAt = performance.now();
+}
+
+function addPulse(x: number, y: number, dur: number, color: string): void {
+  pulses.push({ x, y, start: performance.now(), dur, color });
+}
 
 function markDirty(): void {
   schedMarkDirty(sched);
@@ -285,10 +311,14 @@ function renderGuideArrow(rc: RenderContext, centerAz: number, centerAlt: number
   const dAlt = aa.alt - centerAlt;
   const len = Math.hypot(dAz, dAlt);
 
-  // A short haptic tick the moment the target enters the crosshair (fires once per lock).
+  // A short haptic tick + a matching expanding ring the moment the target enters the
+  // crosshair (fires once per lock).
   const h = lockHaptic(len, lockArmed);
   lockArmed = h.armed;
-  if (h.pulse) vibrate();
+  if (h.pulse) {
+    vibrate();
+    addPulse(rc.centerX, rc.centerY, 520, "rgba(120,220,255,0.95)");
+  }
 
   rc.ctx.save();
   rc.ctx.fillStyle = "rgba(120,220,255,0.95)";
@@ -353,7 +383,17 @@ function bodyProjectorForView(rc: RenderContext): AltAzProjector {
   return (alt, az) => (alt < 0 ? null : altAzToXY(alt, az, rc));
 }
 
-function draw(): void {
+function draw(t = performance.now()): void {
+  // Kick off the one-time cinematic reveal on the first painted frame, and keep the
+  // sky twinkling for a short window right after it lands.
+  if (revealStart < 0) {
+    revealStart = t;
+    lastInteractionAt = t;
+  }
+  const revealProgress = clamp01((t - revealStart) / REVEAL_MS);
+  const starReveal = revealAlpha(revealProgress, 0.28, 0.85); // stars fade in, brightest first
+  const lineReveal = revealAlpha(revealProgress, 0.55, 1.0); // constellation lines follow
+
   const rc = initCanvas(canvas);
   const zoom = getZoom();
   const layers = getLayers();
@@ -394,11 +434,11 @@ function draw(): void {
     renderMeridian(rc.ctx, projectAltAz, 1);
   }
   if (layers.ecliptic) renderEcliptic(rc.ctx, project, ECLIPTIC, 1);
-  if (layers.constellations) renderConstellationLines(rc.ctx, project, vis);
+  if (layers.constellations) renderConstellationLines(rc.ctx, project, vis * lineReveal);
   if (layers.deepSky) renderDeepSky(rc, deepSky, projectAltAz, vis);
 
-  // Bodies — one path for both views.
-  renderStars(rc, stars, projectAltAz, vis, magLimit);
+  // Bodies — one path for both views. `t` drives twinkle; `starReveal` ramps the field in.
+  renderStars(rc, stars, projectAltAz, vis, magLimit, t, starReveal);
   renderSatellites(rc, engine.satellites, projectAltAz);
   renderPlanets(rc, planets, projectAltAz);
   if (moon) renderMoon(rc, moon, projectAltAz);
@@ -421,10 +461,30 @@ function draw(): void {
     renderCompass(rc);
   }
 
+  // Transient delight rings (tap-to-select flash, AR target arrival).
+  renderPulses(rc, t);
+
   // Show the reset button only while the view is zoomed/panned.
   resetBtn?.classList.toggle("show", isViewTransformed());
 
   updateInfoPanel(engine.observer);
+}
+
+// Expanding, fading rings for the transient delight moments (above).
+function renderPulses(rc: RenderContext, t: number): void {
+  for (const p of pulses) {
+    const k = (t - p.start) / p.dur;
+    if (k < 0 || k > 1) continue;
+    const ease = 1 - (1 - k) * (1 - k); // easeOut
+    rc.ctx.save();
+    rc.ctx.globalAlpha = (1 - k) * 0.85;
+    rc.ctx.strokeStyle = p.color;
+    rc.ctx.lineWidth = 2;
+    rc.ctx.beginPath();
+    rc.ctx.arc(p.x, p.y, 7 + ease * 26, 0, Math.PI * 2);
+    rc.ctx.stroke();
+    rc.ctx.restore();
+  }
 }
 
 // AR-only "true field" ring: a circle the size of the chosen optic's field of view.
@@ -445,17 +505,37 @@ function loop(t: number): void {
   if (engine.observer) {
     const now = getSkyTime(); // live wall clock, or the user's scrubbed time
 
+    // A zoom/pan counts as an interaction (keeps the living-sky loop awake a bit).
+    const vv = getViewVersion();
+    if (vv !== lastSeenViewVersion) {
+      lastSeenViewVersion = vv;
+      noteInteraction();
+    }
+
+    // Prune finished transient rings; while any are live (or the reveal is running) we
+    // force a redraw every frame for smooth motion.
+    pulses = pulses.filter((p) => t - p.start < p.dur);
+    const revealing = revealStart >= 0 && t - revealStart < REVEAL_MS;
+    const animating = revealing || pulses.length > 0;
+
+    // Living sky: a gentle redraw cadence while it's dark and the user recently
+    // interacted, so the brightest stars twinkle; it settles to static when idle.
+    const sunAlt = engine.bodies.sun ? engine.bodies.sun.alt : -90;
+    const starsVisible = !getLayers().daylight || sunAlt < -2;
+    const ambientActive = starsVisible && t - lastInteractionAt < AMBIENT_IDLE_MS;
+
     const r = tick(sched, {
       t,
       hasTles: engine.hasTles(),
-      viewVersion: getViewVersion(),
+      viewVersion: vv,
       orientation: isSkyView && isListening() ? getOrientation() : null,
+      ambientActive,
     });
 
     if (r.recomputeBodies) engine.recomputeBodies(now);
     if (r.recomputeSatellites) engine.recomputeSatellites(now);
-    if (r.redraw) {
-      draw();
+    if (r.redraw || animating) {
+      draw(t);
       revealOnce();
     }
   }
@@ -657,6 +737,7 @@ async function init() {
   initZoom(canvas);
 
   const onTap = (e: MouseEvent | TouchEvent) => {
+    noteInteraction();
     const project = bodyProjectorForView(initCanvas(canvas));
     const { stars, planets, deepSky, moon, sun } = engine.bodies;
     handleClick(e, canvas, project, stars, planets, engine.satellites, moon, sun, deepSky);
@@ -664,6 +745,14 @@ async function init() {
     // AR arrow guides back to it). Tapping empty space clears the lock. Satellites
     // resolve to null and keep their snapshot — see metaFromSelection.
     currentTarget = metaFromSelection(state.selected);
+    // A brief ring at the tap point confirms a successful pick.
+    if (state.selected) {
+      const rect = canvas.getBoundingClientRect();
+      const touch = "changedTouches" in e ? e.changedTouches[0] : null;
+      const px = (touch ? touch.clientX : (e as MouseEvent).clientX) - rect.left;
+      const py = (touch ? touch.clientY : (e as MouseEvent).clientY) - rect.top;
+      addPulse(px, py, 420, "rgba(120,220,255,0.9)");
+    }
     updateInfoPanel(engine.observer);
     markDirty();
   };
@@ -687,7 +776,34 @@ async function init() {
     selectSearchResult(sharedView.target);
   }
 
+  // First-run onboarding: once the reveal has landed, auto-open the tour for a brand-new
+  // visitor (and only once). Skip it if they arrived via a shared link (they came for a
+  // specific view, not a tour).
+  const TOUR_SEEN_KEY = "gallerium-seen-tour";
+  if (!sharedView.target && shouldShowFirstRun(readFlag(TOUR_SEEN_KEY))) {
+    setTimeout(() => {
+      writeFlag(TOUR_SEEN_KEY);
+      tour.open();
+    }, REVEAL_MS + 600);
+  }
+
   requestAnimationFrame(loop);
+}
+
+// localStorage helpers that never throw (private mode / disabled storage).
+function readFlag(key: string): string | null {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+function writeFlag(key: string): void {
+  try {
+    localStorage.setItem(key, "1");
+  } catch {
+    /* ignore */
+  }
 }
 
 init();
