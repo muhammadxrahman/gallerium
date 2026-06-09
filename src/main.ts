@@ -8,7 +8,7 @@ import {
   initCanvas,
   renderCompass,
   altAzToXY,
-  altAzToXYPointed,
+  makePointedProjector,
   type RenderContext,
   type EqProjector,
   type AltAzProjector,
@@ -245,10 +245,10 @@ function makeMapProjector(rc: RenderContext): EqProjector {
 }
 
 function makeArProjector(rc: RenderContext, centerAlt: number, centerAz: number, fov: number): EqProjector {
+  const pointed = makePointedProjector(centerAlt, centerAz, fov, rc);
   return (ra, dec) => {
     const { az, alt } = equatorialToHorizontal({ ra, dec }, engine.observer!, engine.bodies.lst);
-    if (alt < -0.5) return null;
-    return altAzToXYPointed(alt, az, centerAlt, centerAz, fov, rc);
+    return pointed(alt, az);
   };
 }
 
@@ -258,7 +258,7 @@ function bodyProjectorForView(rc: RenderContext): AltAzProjector {
   if (isSkyView && isListening()) {
     const fov = 90 / getZoom();
     const { azimuth, altitude } = getOrientation();
-    return (alt, az) => (alt < -0.5 ? null : altAzToXYPointed(alt, az, altitude, azimuth, fov, rc));
+    return makePointedProjector(altitude, azimuth, fov, rc);
   }
   applyView(rc);
   return (alt, az) => (alt < 0 ? null : altAzToXY(alt, az, rc));
@@ -290,7 +290,7 @@ function draw(): void {
     const horizonY = rc.centerY + altitude * (Math.min(rc.width, rc.height) / fov);
     renderSkyAR(rc, sunAlt, horizonY);
     project = makeArProjector(rc, altitude, azimuth, fov);
-    projectAltAz = (alt, az) => (alt < -0.5 ? null : altAzToXYPointed(alt, az, altitude, azimuth, fov, rc));
+    projectAltAz = makePointedProjector(altitude, azimuth, fov, rc);
   } else {
     applyView(rc);
     renderSkyDome(rc, sunAlt, sunAz);

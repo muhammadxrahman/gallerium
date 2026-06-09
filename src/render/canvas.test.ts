@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { altAzToXY, altAzToXYPointed, isVisible, type RenderContext } from "./canvas";
+import { altAzToXY, altAzToXYPointed, makePointedProjector, isVisible, type RenderContext } from "./canvas";
 
 // altAzToXY/altAzToXYPointed only read geometry fields, not ctx/canvas, so a
 // minimal stub is enough. 400x400 canvas, dome radius 180.
@@ -104,6 +104,53 @@ describe("altAzToXYPointed (AR / pointed projection)", () => {
 
   it("rejects points behind the camera (≥90° from the aim point)", () => {
     expect(altAzToXYPointed(0, 100, 0, 0, 90, rc())).toBeNull();
+  });
+});
+
+describe("makePointedProjector (optimized AR projector)", () => {
+  // It is the performance-tuned form of altAzToXYPointed; the contract is that for any
+  // visible point it returns exactly the same pixel, and it culls the same set.
+  it("matches altAzToXYPointed pixel-for-pixel across a grid of visible points", () => {
+    const centerAlt = 35;
+    const centerAz = 120;
+    const fov = 80;
+    const project = makePointedProjector(centerAlt, centerAz, fov, rc());
+    for (let dAlt = -30; dAlt <= 30; dAlt += 10) {
+      for (let dAz = -30; dAz <= 30; dAz += 10) {
+        const alt = centerAlt + dAlt;
+        const az = centerAz + dAz;
+        const fast = project(alt, az);
+        const ref = altAzToXYPointed(alt, az, centerAlt, centerAz, fov, rc());
+        if (ref === null) continue; // culling parity is covered below
+        expect(fast).not.toBeNull();
+        expect(fast![0]).toBeCloseTo(ref[0], 6);
+        expect(fast![1]).toBeCloseTo(ref[1], 6);
+      }
+    }
+  });
+
+  it("maps the aim point to the screen center", () => {
+    const pos = makePointedProjector(30, 100, 90, rc())(30, 100);
+    expect(pos![0]).toBeCloseTo(200, 6);
+    expect(pos![1]).toBeCloseTo(200, 6);
+  });
+
+  it("culls outside the field of view (same as altAzToXYPointed)", () => {
+    const project = makePointedProjector(0, 0, 90, rc());
+    expect(project(0, 60)).toBeNull(); // 60° away, half-FOV 45°
+    expect(project(0, 30)).not.toBeNull(); // 30° away, inside
+  });
+
+  it("broad-phase rejects anything outside the altitude band without misculling visible points", () => {
+    const project = makePointedProjector(0, 0, 90, rc());
+    // |Δalt| = 50 > 45 → must be culled (and indeed it's >45° away).
+    expect(project(50, 0)).toBeNull();
+    // Inside the band and inside the FOV → visible.
+    expect(project(40, 0)).not.toBeNull();
+  });
+
+  it("rejects points below the horizon (alt < -0.5)", () => {
+    expect(makePointedProjector(0, 0, 120, rc())(-5, 0)).toBeNull();
   });
 });
 

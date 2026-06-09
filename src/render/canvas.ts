@@ -179,3 +179,51 @@ export function altAzToXYPointed(
   const y = rc.centerY - yt * focal;
   return [x, y];
 }
+
+// Per-frame-optimized version of altAzToXYPointed. The aim point (centerAlt/Az), fov,
+// and canvas are constant for a whole frame but vary frame to frame, so a factory
+// precomputes everything that doesn't depend on the object — sin/cos(centerAlt), the
+// focal length, cos(fov/2) — once, and the returned closure does only the per-object
+// work. It's the same gnomonic math as altAzToXYPointed, but built for the hot path
+// where it runs for thousands of stars on every orientation change. Optimizations:
+//   - hoisted frame-constants (no recomputed center-trig / tan per star)
+//   - the FOV test compares cosC to cos(fov/2) directly (no per-star acos)
+//   - a free broad-phase reject: great-circle distance ≥ |Δaltitude|, so anything
+//     outside the altitude band can't be in the circular FOV — skip it before any trig.
+export function makePointedProjector(
+  centerAlt: number,
+  centerAz: number,
+  fov: number,
+  rc: RenderContext
+): AltAzProjector {
+  const D2R = Math.PI / 180;
+  const halfFov = fov / 2;
+  const cAltRad = centerAlt * D2R;
+  const sinCAlt = Math.sin(cAltRad);
+  const cosCAlt = Math.cos(cAltRad);
+  const cosHalfFov = Math.cos(halfFov * D2R);
+  const focal = Math.min(rc.width, rc.height) / 2 / Math.tan(halfFov * D2R);
+  const cx = rc.centerX;
+  const cy = rc.centerY;
+
+  return (alt, az) => {
+    if (alt < -0.5) return null; // below the horizon
+    // Broad-phase: angular distance from the aim point is at least |Δalt|, so if that
+    // alone exceeds the FOV radius the object can't be visible. Cheap reject, no trig.
+    if (alt - centerAlt > halfFov || centerAlt - alt > halfFov) return null;
+
+    const altRad = alt * D2R;
+    const dAz = (az - centerAz) * D2R;
+    const sinAlt = Math.sin(altRad);
+    const cosAlt = Math.cos(altRad);
+    const cosDAz = Math.cos(dAz);
+
+    const cosC = sinAlt * sinCAlt + cosAlt * cosCAlt * cosDAz;
+    if (cosC < cosHalfFov) return null; // outside the circular FOV (or behind the camera)
+
+    const inv = 1 / cosC;
+    const xt = cosAlt * Math.sin(dAz) * inv;
+    const yt = (cosCAlt * sinAlt - sinCAlt * cosAlt * cosDAz) * inv;
+    return [cx + xt * focal, cy - yt * focal];
+  };
+}

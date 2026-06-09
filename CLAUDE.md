@@ -39,7 +39,7 @@ src/
 │   ├── deepSky.ts        # Embedded Messier/Caldwell catalog (J2000, no fetch)
 │   └── constellations.json # d3-celestial line + name data (RA/Dec, embedded)
 ├── render/           # Canvas drawing. Takes computed positions, draws them.
-│   ├── canvas.ts         # RenderContext, EqProjector, altAzToXY, altAzToXYPointed
+│   ├── canvas.ts         # RenderContext, projectors, altAzToXY, makePointedProjector (AR)
 │   ├── sky.ts            # Day/night gradient, twilight glow, ground; star-visibility
 │   ├── stars.ts          # Star dots with B-V color index + magnitude sizing
 │   ├── deepSky.ts        # Deep-sky glyphs per kind (galaxy/cluster/nebula) + labels
@@ -110,8 +110,15 @@ in two closures built per frame:
 - `AltAzProjector = (alt,az) => [x,y] | null` — for the bodies (stars/planets/sats/Moon/Sun)
   and the meridian. Every body renderer takes one; they no longer call `altAzToXY*` directly.
 
-Map uses `altAzToXY` (dome), AR uses gnomonic `altAzToXYPointed`; both return null below the
-horizon / outside the FOV. Render stays free of astronomy math. Draw order: sky background →
+Map uses `altAzToXY` (dome), AR uses a gnomonic projection; both return null below the
+horizon / outside the FOV. The AR view is the hot path — it re-projects every above-horizon
+star on each orientation change — so it uses `makePointedProjector(centerAlt, centerAz, fov,
+rc)`, a factory that hoists the frame-constants (`sin/cos(centerAlt)`, focal, `cos(fov/2)`)
+out of the per-object closure, drops the per-star `acos` (compares `cosC ≥ cos(fov/2)`
+directly), and broad-phase rejects anything with `|Δalt| > fov/2` before any trig (great-
+circle distance ≥ |Δalt|). `altAzToXYPointed` is the same math in single-shot form, kept for
+tests/reference; `makePointedProjector` must stay pixel-identical to it (there's a parity
+test). Render stays free of astronomy math. Draw order: sky background →
 Milky Way → grid+meridian → ecliptic → constellation lines → deep-sky → stars → satellites →
 planets → Moon → Sun → constellation names → (AR: HUD | map: selection ring + compass).
 Deep-sky markers sit behind the stars; their (few, curated) labels are placed before the
