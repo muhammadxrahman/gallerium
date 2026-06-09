@@ -220,9 +220,11 @@ are pure math and must always render, even fully offline with no cached data.
 
 ## Known Issues
 
-- **AR azimuth needs on-device tuning**: altitude is now matrix-correct (overhead/roll),
+- **AR azimuth needs on-device confirmation**: altitude is matrix-correct (overhead/roll),
   but azimuth still leans on the compass heading and hasn't been validated on real hardware
-  across iOS/Android. Expect to tune heading sign/offset once tested on a phone.
+  across iOS/Android. There is now a **Compass calibration** slider (settings) that applies a
+  persisted heading offset in `getOrientation()`, so any constant compass error can be dialed
+  out on-device; what remains is confirming the sign/scale are right on a real phone.
 - **Planet accuracy degrades far from J2000**: the low-precision orbital elements
   are accurate to ~1° near year 2000, drift for dates far from that epoch.
 
@@ -230,81 +232,85 @@ are pure math and must always render, even fully offline with no cached data.
 
 ## Roadmap & Backlog
 
-The engine is built and tested — the work now is **proving it, packaging it, and hardening
-the codebase**. Tiers: **P0** = next up, **P1** = soon, **P2** = later. Check items off
-(`[x]`) and fold notable work into "Shipped". Keep this honest — it's the single source of
-truth for what's left.
+The engine and core experience are built, tested, and live. What's left is **proof,
+depth, and reach** — turning a strong app into a memorable, genuinely useful observing
+tool. Tiers: **P0** = next up, **P1** = soon, **P2** = later. Check items off (`[x]`) and
+fold notable work into "Shipped". Keep this honest — it's the single source of truth.
 
 ### Shipped
-- **Astronomy engine** — HYG stars; embedded Messier/Caldwell deep-sky catalog; Sun/Moon/7
-  planets incl. Uranus + Neptune (Meeus + Kepler); SGP4 satellites. All *apparent/topocentric*:
-  refraction, precession (stars + deep-sky), lunar parallax, planet magnitudes + phase,
-  satellite sunlit-visibility. Rise/set/transit/twilight + pass prediction. Cross-checked vs
-  Stellarium / JPL Horizons.
-- **Rendering** — Canvas-2D map dome + gnomonic AR view (one shared body path, two
-  projectors); day/night sky, constellations + names, Milky Way, ecliptic/grid/meridian,
-  planet glyphs (Saturn rings), diffraction spikes, label declutter, vignette/glow.
-  Throttled draw-on-change loop.
-- **Features** — time travel (scrub any date/time), search + "guide me there" (map center /
+- **Astronomy engine** — HYG stars; embedded Messier/Caldwell deep-sky catalog; Sun, Moon,
+  and 7 planets (incl. Uranus + Neptune) via Meeus + Kepler; SGP4 satellites. Everything is
+  *apparent/topocentric*: refraction, precession (stars + deep-sky), lunar parallax, planet
+  magnitude + phase, satellite sunlit-visibility gating. Rise/transit/set + twilight + pass
+  prediction. Cross-checked vs Stellarium / JPL Horizons.
+- **Rendering** — Canvas-2D map dome + gnomonic AR view sharing one body path via two
+  projectors. The AR projector is hand-optimized for the hot path (hoisted frame-constants,
+  no per-star `acos`, a |Δalt| broad-phase cull) so it stays smooth while the phone moves.
+  Day/night sky, constellations + names, Milky Way, ecliptic/grid/meridian, per-kind deep-sky
+  glyphs, planet glyphs (Saturn's rings, Jupiter's bands), diffraction spikes, label
+  declutter, vignette/glow. Throttled draw-on-change loop.
+- **Features** — time travel (scrub any date/time), search + "guide me there" (map centering /
   AR arrow), Tonight highlights feed, tap-to-identify info card with rise/set, tap-to-lock
-  selection that tracks the object across time, zoom/pan.
-- **Platform** — offline-first PWA (service worker + IndexedDB), resilient data loading
-  (mirror fallback / retry / refresh / staleness), device pose model, geolocation + manual
-  location.
-- **UI / design** — consolidated bottom toolbar + settings sheet, replayable feature tour,
-  SVG icon set (no emoji),
-  design tokens + unified panel motion, loading overlay.
-- **Engineering** — TDD across astronomy/utils + engine orchestration (160 tests), CI
-  (test + build on push). `main.ts` refactored into a tested `engine/` (SkyEngine + pure
-  compute/search/highlights/scheduler/status modules) with a thin DOM coordinator.
+  selection that tracks the object as time advances or is scrubbed, pinch/drag zoom + pan.
+- **UI / design** — consolidated bottom toolbar + settings sheet; a standalone top-right help
+  button opening a replayable, plain-language feature tour; SVG line-icon set (no emoji);
+  design tokens + unified class-based panel motion; loading overlay.
+- **Platform** — offline-first PWA (Workbox service worker for the shell + IndexedDB for
+  data) with a full PNG/maskable icon set and a rich web-manifest; resilient data loading
+  (mirror fallback / retry / refresh / staleness warning); device-pose model; geolocation +
+  manual location.
+- **Engineering** — TDD across astronomy, geometry, data, and the orchestration engine
+  (176 tests); `main.ts` refactored into a tested `engine/` (SkyEngine + pure
+  compute/search/highlights/scheduler/status) behind a thin DOM coordinator; GitHub Actions
+  CI that gates on test + build and auto-deploys `main` to GitHub Pages.
+- **Docs** — detailed README (architecture, how-it-works, accuracy, data sources) + MIT
+  license. (Demo media / screenshots pending real-device captures.)
 
-### A. Package it (P0 — credibility)
-- [x] **Live on GitHub Pages** (`muhammadxrahman.github.io/gallerium/`), installed to the
-  iPhone home screen and used in the real environment — the engine runs end-to-end.
-- [ ] **README**: live link + demo GIF/video, problem narrative (SGP4 topocentric, gnomonic
-  projection, offline PWA, day/night), architecture diagram, accuracy claims. This is the
-  missing "front door" — biggest remaining packaging gap.
-- [ ] **On-device validation note**: write down what's confirmed working on real hardware —
-  especially whether the **AR azimuth actually lines up with the sky** (the one piece still
-  flagged untested) — and fix/tune if it doesn't.
+### A. Proof & packaging (P0)
+- [x] **Heading calibration** — a persisted compass-offset slider (settings) applied in
+  `getOrientation()`, so AR can be aligned to the real sky on-device (`Orientation.ts`,
+  tested). *Still on the user:* confirm on a real phone that the offset sign/scale are right.
+- [x] **Ground-truth accuracy suite** (`astronomy/accuracy.test.ts`) — Sun declination at the
+  2025 equinoxes/solstices (definitional ground truth), the on-the-ecliptic invariant, the
+  Moon's orbital-inclination + perigee/apogee bounds across a year, and JPL planet
+  cross-checks with documented (3°) tolerances. Honest about each model's real precision.
+- [~] **Test coverage gaps** — the cache staleness logic is now pure + tested (`isExpired`);
+  full IndexedDB integration would need a `fake-indexeddb` dev-dep (install was blocked).
+  The DOM-bound parts of `main.ts` (draw, tap → hit-test) remain untested (no jsdom env).
+- [ ] **Demo media** *(user-owned)* — screen-capture GIF/video in the README, manifest
+  `screenshots`, and a Lighthouse pass.
 
-### B. Code health & confidence (P0/P1)
-- [x] **Refactor `main.ts`** → `engine/`: `SkyEngine` (astronomy state + compute) composing
-  pure `compute`/`search`/`highlights`/`scheduler`/`status` modules. `main.ts` is now a thin
-  DOM coordinator (~480 lines) — toolbar wiring, projectors, draw, tap handling — that
-  delegates all decisions to the tested engine.
-- [x] **Broaden tests beyond astronomy**: engine orchestration (`SkyEngine`), the render-loop
-  scheduler (cadence + draw-on-change), idle-status logic, and search/guide target resolution
-  are all covered (160 tests). Caught a latent bug: the AR orientation redraw gate started
-  at `NaN`, so `|x − NaN| > ε` was always false and it never fired — now first-sample-aware.
-- [ ] **Still thin on coverage**: data/cache layer (IndexedDB), and the DOM-bound bits of
-  `main.ts` (draw, tap → hit-test wiring) remain untested.
-- [ ] **Ground-truth accuracy suite**: a JPL Horizons table across many dates with
-  arcminute tolerances — turns "should be accurate" into proof.
+### B. Make it a real observing tool (P0/P1 — highest-impact additions)
+- [ ] **Night-vision (red) mode** — a one-tap red palette that preserves dark adaptation.
+  The most-requested feature of any serious stargazing app; on-brand and visually
+  distinctive. (Palette swap behind a toggle; cheap, high payoff.)
+- [ ] **Light-pollution preset (Bortle)** — a simple "city → dark site" selector that drives
+  the limiting magnitude and dims the Milky Way, so the rendered sky matches what you can
+  actually see from where you are. (Reframes the existing magnitude slider as a real-world
+  control.)
+- [ ] **Altitude-tonight curve** in the info card — a small sparkline of an object's altitude
+  through the night (rise → transit → set), so you know *when* to look, not just *where*.
+- [ ] **Tappable Tonight feed** — tap any highlight (a planet, the ISS pass, a conjunction)
+  to be guided straight to it. Connects the two best features with little code.
+- [ ] **Meteor-shower highlights** — an embedded shower table surfaces active showers (peak
+  night, radiant, expected rate) in the Tonight feed. Timely, delightful, low-effort depth.
+- [ ] **Share the view** — export the current sky (location + time + framing) as an image,
+  and a shareable URL that restores it. Social proof and a portfolio-friendly feature.
 
-### C. Content depth (P1)
-- [x] Deep-sky objects (Messier / Caldwell) — embedded J2000 catalog (`data/deepSky.ts`),
-  per-kind glyphs (`render/deepSky.ts`), tap-to-identify + search/guide, "Deep-sky" layer
-  toggle. Precessed like stars through the shared pipeline.
-- [x] Outer planets (Uranus / Neptune) — added to the Keplerian set with magnitude
-  coefficients; positions verified vs JPL Horizons. Optionally comets / bright asteroids next.
-- [ ] Observing list / favorites; shareable location+time+view URL; coordinate-display
-  setting (alt-az vs RA/dec).
+### C. Convenience & content (P1/P2)
+- [ ] Observing list / favorites; coordinate-display setting (alt-az vs RA/dec); an optic
+  field-of-view ring (binocular/telescope true field overlay).
+- [ ] Comets / bright asteroids; constellation figure art.
+- [ ] Haptic tick when the AR crosshair locks onto an object.
 
 ### D. Reach & polish (P2)
-- [ ] Accessibility (keyboard nav, ARIA labels, color-blind-safe colors, larger-text mode)
+- [ ] Accessibility (keyboard nav, ARIA labels, color-blind-safe palette, larger-text mode)
   + i18n.
 - [ ] Real-device performance profiling; layered canvases (static stars @ ~1 fps + dynamic
-  satellite layer) if the full-scene redraw at sat cadence bites; smaller first load
-  (pre-trimmed mag ≤ 6.5 star JSON / progressive).
-- [~] PWA polish: PNG icons (192/512 + 512 maskable with safe zone + 180 apple-touch),
-  generated from `public/icon.svg` via `npm run icons` (headless Chrome → sips; macOS).
-  Manifest gained `id`/`scope`/`start_url`/`lang`/`dir`/`categories` and the PNG icon set;
-  index.html serves a PNG apple-touch icon (iOS ignores SVG ones). Still TODO: manifest
-  `screenshots` (needs the real device captures) + a formal Lighthouse pass.
-- [x] Replayable feature tour (`components/Tour.ts`), opened from a top-right help button —
-  plain-language, stepped, explains every toolbar button. (Chosen over a first-run-only tour
-  so it's always available, and surfaced as a standalone `?` so newcomers find it.)
+  satellite layer) if the sat-cadence redraw bites; smaller first load (pre-trimmed
+  mag ≤ 6.5 star JSON / progressive).
+- [ ] Visual leftovers: Moon earthshine/libration, smooth map↔sky crossfade. (Star twinkle
+  deliberately deferred — continuous redraw would break the battery model.)
 - [ ] Visual leftovers: Moon earthshine/libration, smooth map↔sky crossfade. (Star twinkle
   deliberately deferred — continuous redraw would break the battery model.)
 
@@ -312,17 +318,26 @@ truth for what's left.
 
 ## Testing Approach
 
-TDD with Vitest (160 tests). Every astronomy module has a test file, plus the render
-projection (`render/canvas.test.ts`), hit detection (`components/HitDetection.test.ts`),
-the star/TLE parsers, `utils/fetchWithFallback.test.ts` (mirror fallback/retry, mocked
-`fetch`), and the orchestration engine: `SkyEngine` (load→locate→compute lifecycle),
-`compute`/`search`/`highlights`, the render-loop `scheduler` (cadence + draw-on-change
-state machine), and `status` (idle/offline/stale-data text). Ground truth for astronomy is cross-checked against Stellarium Web or JPL
-Horizons. Astronomy position tests use wide tolerances (±5°) — this is a visual app, not a
-navigation system ("places X in the correct region of the sky"). Pure geometry is tested
-exactly: model-agnostic invariants (zenith→center, cardinal directions, culling, up/down &
-east/west signs, azimuth wrap) plus gnomonic-specific properties (fov/2 → screen edge,
-offset = tan(angle)·focal, behind-camera rejection).
+TDD with Vitest (196 tests, 28 files). **Unit tests are co-located** with the code they
+cover (`src/**/*.test.ts`, declared once in `vite.config.ts`) — the Vitest/TS best practice:
+a test sits next to its module, moves with it, and imports it relatively. This is deliberate;
+don't relocate tests into a separate tree. The whole suite, by layer:
+
+| Layer | Test files (`*.test.ts`) — what each covers |
+|---|---|
+| `astronomy/` | `coordinates` (eq→horizontal) · `sun` · `moon` · `planets` (7, Kepler + mags) · `precession` · `parallax` · `refraction` · `riseset` (+twilight) · `passes` · `satellites` (SGP4 + sunlit) · `referenceLines` · **`accuracy`** (cross-cutting ground-truth suite) |
+| `engine/` | `compute` · `search` · `highlights` · `scheduler` (cadence + draw-on-change) · `status` · `SkyEngine` (load→locate→compute lifecycle) |
+| `render/` | `canvas` (both projections + optimized AR projector parity) |
+| `components/` | `HitDetection` (`pickObject`) · `pose` · `Orientation` (heading calibration) · `Tour` (content + nav) |
+| `data/` | `stars` (HYG parser) · `deepSky` (catalog integrity) |
+| `utils/` | `cache` (staleness) · `clock` (sky time) · `fetchWithFallback` (mirror/retry, mocked `fetch`) |
+
+Ground truth for astronomy is cross-checked against Stellarium Web or JPL Horizons. Astronomy
+position tests use wide tolerances (±5°) — this is a visual app, not a navigation system
+("places X in the correct region of the sky"). Pure geometry is tested exactly: model-agnostic
+invariants (zenith→center, cardinal directions, culling, up/down & east/west signs, azimuth
+wrap) plus gnomonic-specific properties (fov/2 → screen edge, offset = tan(angle)·focal,
+behind-camera rejection).
 
 Hit detection's geometry lives in the pure `pickObject(x, y, rc, …)`; `handleClick` is a
 thin wrapper that extracts event coords and calls it. Test `pickObject`, not `handleClick`.

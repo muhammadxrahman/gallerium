@@ -8,8 +8,48 @@ export interface DeviceOrientation {
 let orientation: DeviceOrientation = { azimuth: 0, altitude: 45 };
 let listening = false;
 
+// Manual compass-calibration offset (degrees), added to the reported heading. The phone
+// compass can read tens of degrees off true north; this lets the user nudge the Sky view
+// until it lines up with reality. Persisted so it survives reloads.
+const HEADING_KEY = "gallerium-heading-offset";
+
+function loadHeadingOffset(): number {
+  try {
+    const raw = localStorage.getItem(HEADING_KEY);
+    const n = raw === null ? NaN : parseFloat(raw);
+    if (Number.isFinite(n)) return n;
+  } catch {
+    /* no localStorage (e.g. tests) — fall through to default */
+  }
+  return 0;
+}
+
+let headingOffset = loadHeadingOffset();
+
+export function normalizeHeading(deg: number): number {
+  return ((deg % 360) + 360) % 360;
+}
+
+export function getHeadingOffset(): number {
+  return headingOffset;
+}
+
+export function setHeadingOffset(deg: number): void {
+  headingOffset = deg;
+  try {
+    localStorage.setItem(HEADING_KEY, String(deg));
+  } catch {
+    /* ignore */
+  }
+}
+
+// The reported orientation, with the calibration offset folded into the heading so
+// every consumer (render, hit-test, HUD, guide arrow) stays consistent.
 export function getOrientation(): DeviceOrientation {
-  return orientation;
+  return {
+    azimuth: normalizeHeading(orientation.azimuth + headingOffset),
+    altitude: orientation.altitude,
+  };
 }
 
 export function isListening(): boolean {

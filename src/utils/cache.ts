@@ -1,6 +1,13 @@
 const DB_NAME = "gallerium-cache";
 const DB_VERSION = 1;
 
+// The only non-plumbing decision in this module: is a cached record too old to use?
+// Extracted so it's unit-testable without an IndexedDB. A falsy maxAgeMs means "no
+// expiry" (the staleness UI uses cacheGetEntry to read the age regardless).
+export function isExpired(timestamp: number, maxAgeMs?: number, now: number = Date.now()): boolean {
+  return !!maxAgeMs && now - timestamp > maxAgeMs;
+}
+
 function openDB(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const request = indexedDB.open(DB_NAME, DB_VERSION);
@@ -39,7 +46,7 @@ export async function cacheGet<T>(
     request.onsuccess = () => {
       const record = request.result;
       if (!record) return resolve(null);
-      if (maxAgeMs && Date.now() - record.timestamp > maxAgeMs) {
+      if (isExpired(record.timestamp, maxAgeMs)) {
         return resolve(null); // expired
       }
       resolve(record.value as T);

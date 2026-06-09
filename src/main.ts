@@ -1,7 +1,7 @@
 import "./style.css";
 import { registerSW } from "virtual:pwa-register";
 import { showPermissionPrompt } from "./components/PermissionPrompt";
-import { getOrientation, isListening } from "./components/Orientation";
+import { getOrientation, isListening, getHeadingOffset, setHeadingOffset } from "./components/Orientation";
 import { initInfoPanel, updateInfoPanel } from "./components/InfoPanel";
 import { handleClick } from "./components/HitDetection";
 import {
@@ -466,6 +466,34 @@ async function init() {
   refreshRow.innerHTML = tbContent(icon("refresh", 18), "Refresh data");
   refreshRow.addEventListener("click", refreshData);
   toolbar.settingsBody.appendChild(refreshRow);
+
+  // Compass calibration: nudge the Sky-view heading until it lines up with the real sky
+  // (phone compasses can read tens of degrees off). Only affects the AR view.
+  const calWrap = document.createElement("div");
+  calWrap.style.cssText = "padding:12px 8px 4px;";
+  const calLabel = document.createElement("div");
+  calLabel.style.cssText =
+    "font-size:12px;color:rgba(255,255,255,0.6);margin-bottom:6px;display:flex;justify-content:space-between;";
+  const calSlider = document.createElement("input");
+  calSlider.type = "range";
+  calSlider.min = "-180";
+  calSlider.max = "180";
+  calSlider.step = "1";
+  calSlider.value = String(getHeadingOffset());
+  calSlider.style.cssText = "width:100%;";
+  const updateCal = () => {
+    const v = getHeadingOffset();
+    calLabel.innerHTML = `<span>Compass calibration (Sky view)</span><span style="color:rgba(255,255,255,0.85)">${v > 0 ? "+" : ""}${v}°</span>`;
+  };
+  updateCal();
+  calSlider.addEventListener("input", () => {
+    setHeadingOffset(parseFloat(calSlider.value));
+    updateCal();
+    markDirty();
+  });
+  calWrap.appendChild(calLabel);
+  calWrap.appendChild(calSlider);
+  toolbar.settingsBody.appendChild(calWrap);
 
   initZoom(canvas);
 

@@ -1,9 +1,17 @@
-import { defineConfig } from 'vite'
+/// <reference types="vitest/config" />
+import { defineConfig } from 'vitest/config'
 import basicSsl from '@vitejs/plugin-basic-ssl'
 import { VitePWA } from 'vite-plugin-pwa'
 
 export default defineConfig({
   base: '/gallerium/',
+  // Test discovery is declared here in one place. Unit tests stay co-located with the
+  // code they cover (`src/**/*.test.ts`) — the Vitest/TS best practice — so tests move
+  // with their module and imports stay relative. See CLAUDE.md "Test index" for the map.
+  test: {
+    include: ['src/**/*.test.ts'],
+    environment: 'node',
+  },
   plugins: [
     basicSsl(),
     VitePWA({
