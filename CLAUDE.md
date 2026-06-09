@@ -63,6 +63,7 @@ src/
 │   ├── Search.ts         # Object search overlay (→ "guide me there")
 │   ├── Highlights.ts     # "Tonight" feed panel
 │   ├── Toolbar.ts        # Bottom toolbar + settings sheet (the single control surface)
+│   ├── Tour.ts           # Replayable plain-language feature tour (top-right help button)
 │   ├── icons.ts          # SVG line-icon set (no emoji)
 │   └── Zoom.ts           # Pinch + wheel zoom factor (shared by both views)
 ├── store/
@@ -191,9 +192,13 @@ uses `setTransform` (idempotent), not `scale` (which would compound each frame).
 Tonight · Settings) instead of scattered floating chips. Secondary controls (layer toggles,
 daylight, star-density, location, data refresh) live in the **settings sheet** behind the
 Settings button. Each control component exposes an `open()` handle (it no longer creates its
-own chip); main wires toolbar buttons to them. Icons come from `components/icons.ts`
+own chip); main wires toolbar buttons to them. The one deliberate exception to the toolbar is
+a standalone top-right help button (`.help-fab`) that opens the tour — kept separate so a
+first-time user finds it immediately rather than hunting in settings. The tour
+(`components/Tour.ts`) is a replayable, stepped, plain-language overlay explaining each
+button, not gated to first load. Icons come from `components/icons.ts`
 (SVG line-icons, `currentColor`) — **no emoji anywhere** in the UI. `#status` sits top-center,
-`#info-panel` and the panels anchor above the toolbar.
+the help button top-right, and `#info-panel` and the panels anchor above the toolbar.
 
 **Panel motion is class-based, not display toggles.** Panels/overlays are always in the DOM
 and animate via a `.show` class (opacity + translate, shared `--ease`), so they fade+slide
@@ -246,7 +251,8 @@ truth for what's left.
 - **Platform** — offline-first PWA (service worker + IndexedDB), resilient data loading
   (mirror fallback / retry / refresh / staleness), device pose model, geolocation + manual
   location.
-- **UI / design** — consolidated bottom toolbar + settings sheet, SVG icon set (no emoji),
+- **UI / design** — consolidated bottom toolbar + settings sheet, replayable feature tour,
+  SVG icon set (no emoji),
   design tokens + unified panel motion, loading overlay.
 - **Engineering** — TDD across astronomy/utils + engine orchestration (160 tests), CI
   (test + build on push). `main.ts` refactored into a tested `engine/` (SkyEngine + pure
@@ -296,9 +302,11 @@ truth for what's left.
   Manifest gained `id`/`scope`/`start_url`/`lang`/`dir`/`categories` and the PNG icon set;
   index.html serves a PNG apple-touch icon (iOS ignores SVG ones). Still TODO: manifest
   `screenshots` (needs the real device captures) + a formal Lighthouse pass.
-- [ ] Visual leftovers: Moon earthshine/libration, smooth map↔sky crossfade, first-run
-  onboarding tour. (Star twinkle deliberately deferred — continuous redraw would break the
-  battery model.)
+- [x] Replayable feature tour (`components/Tour.ts`), opened from a top-right help button —
+  plain-language, stepped, explains every toolbar button. (Chosen over a first-run-only tour
+  so it's always available, and surfaced as a standalone `?` so newcomers find it.)
+- [ ] Visual leftovers: Moon earthshine/libration, smooth map↔sky crossfade. (Star twinkle
+  deliberately deferred — continuous redraw would break the battery model.)
 
 ---
 

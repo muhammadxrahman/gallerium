@@ -36,6 +36,7 @@ import { initTimeControl } from "./components/TimeControl";
 import { initSearch } from "./components/Search";
 import { initHighlights } from "./components/Highlights";
 import { createToolbar, tbContent } from "./components/Toolbar";
+import { initTour } from "./components/Tour";
 import { icon } from "./components/icons";
 import { initZoom, getZoom, getPan, getViewVersion, recentlyInteracted, centerOn } from "./components/Zoom";
 import { state } from "./store/state";
@@ -438,6 +439,16 @@ async function init() {
 
   toolbar.addButton({ icon: icon("star"), label: "Tonight", onClick: tonight.open });
   toolbar.addButton({ icon: icon("sliders"), label: "Settings", onClick: toolbar.openSettings });
+
+  // Top-right help button: opens the replayable feature tour. A standalone affordance
+  // (not buried in settings) so a first-time user spots it immediately.
+  const tour = initTour();
+  const helpBtn = document.createElement("button");
+  helpBtn.className = "help-fab";
+  helpBtn.setAttribute("aria-label", "Take a tour");
+  helpBtn.innerHTML = icon("help", 22);
+  helpBtn.addEventListener("click", tour.open);
+  document.body.appendChild(helpBtn);
 
   // --- Settings sheet contents ---
   buildLayersControls(toolbar.settingsBody, markDirty);

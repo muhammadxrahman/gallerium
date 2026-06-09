@@ -17,7 +17,15 @@ const PATHS: Record<string, string> = {
   planet: `<circle cx="12" cy="12" r="4.5"/><ellipse cx="12" cy="12" rx="9" ry="3" transform="rotate(-22 12 12)"/>`,
   satellite: `<circle cx="12" cy="12" r="1.7"/><ellipse cx="12" cy="12" rx="9" ry="4" transform="rotate(28 12 12)"/>`,
   conjunction: `<circle cx="9" cy="12" r="4.3"/><circle cx="15.5" cy="12" r="3.4"/>`,
+  // Question mark in a circle = "help / tour".
+  help: `<circle cx="12" cy="12" r="9"/><path d="M9.3 9.2a2.8 2.8 0 0 1 5.4 1c0 1.9-2.7 2.3-2.7 4"/><line x1="12" y1="17.4" x2="12" y2="17.5"/>`,
+  close: `<line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/>`,
+  // Four-way arrows = "drag / zoom / move around".
+  move: `<line x1="12" y1="3" x2="12" y2="21"/><line x1="3" y1="12" x2="21" y2="12"/><polyline points="8.5 6.5 12 3 15.5 6.5"/><polyline points="8.5 17.5 12 21 15.5 17.5"/><polyline points="6.5 8.5 3 12 6.5 15.5"/><polyline points="17.5 8.5 21 12 17.5 15.5"/>`,
 };
+
+// The set of available icon names — used to validate references (e.g. the tour steps).
+export const ICON_NAMES = Object.keys(PATHS);
 
 export function icon(name: string, size = 22): string {
   const inner = PATHS[name] ?? "";
