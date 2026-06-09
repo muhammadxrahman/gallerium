@@ -125,6 +125,16 @@ Deep-sky markers sit behind the stars; their (few, curated) labels are placed be
 stars so the showpiece objects keep their names. Call
 `beginLabels()` once per draw; `drawLabel()` declutters in call order (bright objects win).
 
+**Selection is a tracked lock, not a snapshot.** A tap or a search result stores a stable
+`TargetMeta` identity in `currentTarget` (not a frozen position): `metaFromSelection()`
+maps a tapped `SelectedObject` to its identity (star id / planet name / deep-sky id / sun /
+moon). Each `draw()` re-resolves `state.selected = targetSelection(currentTarget, bodies)`
+against the *current* sky, so the selection ring (map) and the AR guide arrow stay on the
+object as it moves — whether time advances naturally (compute tick → redraw) or is scrubbed
+(invalidate → recompute → redraw). Tapping empty space clears the lock. Satellites are the
+exception (`metaFromSelection` → null): they aren't in `SkyBodies` and move too fast, so
+they keep the one-shot snapshot.
+
 **Data loading is resilient.** `utils/fetchWithFallback` tries mirrors in order, retries
 transient failures, and aborts hung requests via a timeout. Stars: GitHub-raw + jsDelivr;
 TLEs: CelesTrak .org + .com. `loadStars(force)`/`loadTLEs(force)` bypass the cache for the
@@ -231,7 +241,8 @@ truth for what's left.
   planet glyphs (Saturn rings), diffraction spikes, label declutter, vignette/glow.
   Throttled draw-on-change loop.
 - **Features** — time travel (scrub any date/time), search + "guide me there" (map center /
-  AR arrow), Tonight highlights feed, tap-to-identify info card with rise/set, zoom/pan.
+  AR arrow), Tonight highlights feed, tap-to-identify info card with rise/set, tap-to-lock
+  selection that tracks the object across time, zoom/pan.
 - **Platform** — offline-first PWA (service worker + IndexedDB), resilient data loading
   (mirror fallback / retry / refresh / staleness), device pose model, geolocation + manual
   location.

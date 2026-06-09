@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildSearchIndex, targetLabel, targetAltAz, targetSelection } from "./search";
+import { buildSearchIndex, targetLabel, targetAltAz, targetSelection, metaFromSelection } from "./search";
 import { computeBodies } from "./compute";
 import type { Star } from "../data/stars";
 import type { DeepSkyObject } from "../data/deepSky";
@@ -78,5 +78,64 @@ describe("targetAltAz / targetSelection / targetLabel", () => {
     expect(targetLabel({ kind: "planet", name: "Mars" })).toBe("Mars");
     expect(targetLabel({ kind: "con", label: "Lyra", ra: 0, dec: 0 })).toBe("Lyra");
     expect(targetLabel({ kind: "sun" })).toBe("Sun");
+  });
+});
+
+describe("metaFromSelection (tap-to-lock identity)", () => {
+  const sky = computeBodies([star(7, 100, 20, "Vega")], NYC, DATE, dsos);
+
+  it("derives a re-resolvable identity for each lockable selection type", () => {
+    expect(metaFromSelection(targetSelection({ kind: "sun" }, sky))).toEqual({ kind: "sun" });
+    expect(metaFromSelection(targetSelection({ kind: "moon" }, sky))).toEqual({ kind: "moon" });
+    expect(metaFromSelection(targetSelection({ kind: "planet", name: "Jupiter" }, sky))).toEqual({
+      kind: "planet",
+      name: "Jupiter",
+    });
+    expect(metaFromSelection(targetSelection({ kind: "star", id: 7, label: "Vega" }, sky))).toEqual({
+      kind: "star",
+      id: 7,
+      label: "Vega",
+    });
+    expect(
+      metaFromSelection(targetSelection({ kind: "deepsky", id: "M31", label: "Andromeda Galaxy (M31)" }, sky))
+    ).toEqual({ kind: "deepsky", id: "M31", label: "Andromeda Galaxy (M31)" });
+  });
+
+  it("labels an unnamed star by its id", () => {
+    const skyU = computeBodies([star(42, 100, 20)], NYC, DATE);
+    expect(metaFromSelection(targetSelection({ kind: "star", id: 42, label: "x" }, skyU))).toEqual({
+      kind: "star",
+      id: 42,
+      label: "Star #42",
+    });
+  });
+
+  it("returns null for empty space and for satellites (no persistent lock)", () => {
+    expect(metaFromSelection(null)).toBeNull();
+    expect(
+      metaFromSelection({
+        type: "satellite",
+        data: { name: "ISS (ZARYA)", ra: 0, dec: 0, altitude: 420, az: 10, alt: 30 },
+      })
+    ).toBeNull();
+  });
+
+  it("re-resolves the locked identity against a later sky, so the selection tracks the moving object", () => {
+    const meta = metaFromSelection(targetSelection({ kind: "star", id: 7, label: "Vega" }, sky))!;
+    const before = targetSelection(meta, sky);
+    // Six hours later the sky has rotated ~90°, so the star's az/alt are different.
+    const later = computeBodies(
+      [star(7, 100, 20, "Vega")],
+      NYC,
+      new Date(DATE.getTime() + 6 * 3600_000),
+      dsos
+    );
+    const after = targetSelection(meta, later);
+    expect(before?.type).toBe("star");
+    expect(after?.type).toBe("star");
+    if (before?.type === "star" && after?.type === "star") {
+      expect(after.data.id).toBe(before.data.id); // same object
+      expect(after.data.az).not.toBeCloseTo(before.data.az, 1); // updated position
+    }
   });
 });

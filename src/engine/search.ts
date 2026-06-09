@@ -110,3 +110,28 @@ export function targetSelection(meta: TargetMeta, sky: SkyBodies): SelectedObjec
   }
   return null;
 }
+
+// The stable identity of a tapped object, so a selection can be re-resolved against
+// each new sky (i.e. *locked on* and tracked) as time advances or is scrubbed — instead
+// of freezing the position snapshot taken at tap time. Returns null for satellites:
+// they aren't part of SkyBodies (separate fast-recompute path) and move too fast for a
+// meaningful lock, so they keep the one-shot snapshot behavior.
+export function metaFromSelection(sel: SelectedObject): TargetMeta | null {
+  if (!sel) return null;
+  switch (sel.type) {
+    case "sun":
+      return { kind: "sun" };
+    case "moon":
+      return { kind: "moon" };
+    case "planet":
+      return { kind: "planet", name: sel.data.name };
+    case "star":
+      return { kind: "star", id: sel.data.id, label: sel.data.name ?? `Star #${sel.data.id}` };
+    case "deepsky": {
+      const { id, name } = sel.data;
+      return { kind: "deepsky", id, label: name === id ? id : `${name} (${id})` };
+    }
+    default:
+      return null;
+  }
+}

@@ -40,7 +40,7 @@ import { icon } from "./components/icons";
 import { initZoom, getZoom, getPan, getViewVersion, recentlyInteracted, centerOn } from "./components/Zoom";
 import { state } from "./store/state";
 import { SkyEngine } from "./engine/SkyEngine";
-import { targetAltAz, targetLabel, targetSelection, type TargetMeta } from "./engine/search";
+import { targetAltAz, targetLabel, targetSelection, metaFromSelection, type TargetMeta } from "./engine/search";
 import { createScheduler, tick, markDirty as schedMarkDirty, invalidate as schedInvalidate } from "./engine/scheduler";
 import { idleStatus as computeIdleStatus } from "./engine/status";
 
@@ -459,10 +459,13 @@ async function init() {
   initZoom(canvas);
 
   const onTap = (e: MouseEvent | TouchEvent) => {
-    currentTarget = null; // a manual tap takes over from any guided target
     const project = bodyProjectorForView(initCanvas(canvas));
     const { stars, planets, deepSky, moon, sun } = engine.bodies;
     handleClick(e, canvas, project, stars, planets, engine.satellites, moon, sun, deepSky);
+    // Lock onto whatever was tapped so the selection tracks it as time moves (and the
+    // AR arrow guides back to it). Tapping empty space clears the lock. Satellites
+    // resolve to null and keep their snapshot — see metaFromSelection.
+    currentTarget = metaFromSelection(state.selected);
     updateInfoPanel(engine.observer);
     markDirty();
   };
