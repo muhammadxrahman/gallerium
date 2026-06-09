@@ -306,6 +306,40 @@ html, body {
   transform: translateY(0) scale(1);
 }
 
+/* ---- Night-vision mode ---- */
+/* A red multiply veil over the whole app: keeps only the red channel so the screen no
+   longer emits blue/green light that spoils dark adaptation. pointer-events:none lets
+   taps pass through; the high z-index puts it above every panel and overlay. */
+#night-veil {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  pointer-events: none;
+  background: #cc0000;
+  mix-blend-mode: multiply;
+  opacity: 0;
+  transition: opacity var(--ease);
+}
+body.night-vision #night-veil {
+  opacity: 1;
+}
+
+/* ---- Altitude sparkline (info card) ---- */
+.info-chart-label {
+  font-size: 11px;
+  letter-spacing: 0.3px;
+  color: rgba(255, 255, 255, 0.5);
+  margin-top: 12px;
+  margin-bottom: 4px;
+}
+.alt-spark {
+  display: block;
+  width: 100%;
+  height: 48px;
+  border-radius: var(--r-sm);
+  background: rgba(255, 255, 255, 0.03);
+}
+
 /* ---- Help button (opens the feature tour) ---- */
 .help-fab {
   position: fixed;

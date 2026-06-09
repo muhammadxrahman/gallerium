@@ -13,7 +13,7 @@ A real-time, offline-first sky map that computes the positions of stars, planets
 
 Every position in Gallerium is derived from first principles rather than fetched from a service. The inputs are a star catalog (HYG v4.1), a satellite element set (CelesTrak TLEs), the observer's latitude and longitude, and the system clock. From those, the app computes apparent topocentric positions: where each object actually appears in the sky for the observer's location at the current instant.
 
-This constraint defines the engineering: spherical coordinate transforms, orbital propagation, atmospheric and geometric corrections, a Canvas 2D renderer with two projections, an offline caching strategy, and a render loop bounded for low battery use. The astronomy is validated against Stellarium and JPL Horizons, and the codebase has 196 automated tests.
+This constraint defines the engineering: spherical coordinate transforms, orbital propagation, atmospheric and geometric corrections, a Canvas 2D renderer with two projections, an offline caching strategy, and a render loop bounded for low battery use. The astronomy is validated against Stellarium and JPL Horizons, and the codebase has 217 automated tests.
 
 ## Features
 
@@ -29,6 +29,9 @@ This constraint defines the engineering: spherical coordinate transforms, orbita
 | Tap to identify | Selecting an object shows its name, type, apparent magnitude, and rise/transit/set times. |
 | Offline | Service worker precaches the app shell; IndexedDB caches the catalog and TLEs. The app opens and functions with no network. |
 | Day/night sky | Background tint and star visibility track the computed Sun altitude. |
+| Light pollution | A Bortle 1 to 9 selector limits the visible stars and the Milky Way to match your site, from a pristine dark sky to an inner city. |
+| Night vision | A one-tap red mode that keeps the screen from emitting blue and green light, preserving your eyes' dark adaptation. |
+| Altitude tonight | Each object's info card shows a sparkline of its altitude over the next 24 hours, with the dark hours shaded, so you know when to look. |
 
 <p align="center">
   <img src="docs/screenshots/02-ar-view.png" alt="AR mode overlaying constellation lines and a planet label aligned to the pointed sky direction" width="300">
@@ -124,7 +127,7 @@ utils/  clock, geolocation, fetch-with-fallback, math
 | Language | TypeScript (strict) |
 | Rendering | Canvas 2D (no WebGL, no Three.js) |
 | Build | Vite |
-| Tests | Vitest, 196 tests |
+| Tests | Vitest, 217 tests |
 | Offline / PWA | `vite-plugin-pwa` (Workbox) + IndexedDB |
 | Orbit propagation | `satellite.js` (SGP4) |
 | CI/CD | GitHub Actions: test and build gate, auto-deploy to GitHub Pages |
@@ -134,7 +137,7 @@ utils/  clock, geolocation, fetch-with-fallback, math
 
 ## Testing and validation
 
-196 automated tests cover the astronomy layer, the geometry of both projections, the data parsers, the deep-sky catalog, the resilient fetch logic, and the orchestration engine (compute pipeline, search/guide resolver, Tonight feed, render-loop scheduler).
+217 automated tests cover the astronomy layer, the geometry of both projections, the data parsers, the deep-sky catalog, the resilient fetch logic, and the orchestration engine (compute pipeline, search/guide resolver, Tonight feed, render-loop scheduler).
 
 Validation uses two methods:
 

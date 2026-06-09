@@ -1,6 +1,8 @@
 import { state } from "../store/state";
 import { riseTransitSet, STD_ALT_STAR, STD_ALT_SUN } from "../astronomy/riseset";
 import { moonPhaseName } from "../astronomy/moon";
+import { altitudeTrack, sunAltitudeTrack } from "../astronomy/altitudeTrack";
+import { altitudeSparkline } from "./altitudeSparkline";
 import { getSkyTime } from "../utils/clock";
 import { DEEP_SKY_KIND_LABEL } from "../data/deepSky";
 import type { Observer } from "../astronomy/coordinates";
@@ -44,7 +46,18 @@ export function initInfoPanel(): void {
   document.body.appendChild(panel);
 }
 
-function card(type: string, name: string, stats: Array<[string, string]>): string {
+// An "altitude tonight" sparkline for a fixed-ish body: where it sits over the next 24h,
+// with the dark hours shaded. Empty string when there's no observer (nothing to compute).
+function altChart(ra: number, dec: number, observer: Observer | null): string {
+  if (!observer) return "";
+  const start = getSkyTime();
+  const obj = altitudeTrack(ra, dec, observer, start);
+  const sun = sunAltitudeTrack(observer, start);
+  const svg = altitudeSparkline(obj, sun);
+  return svg ? `<div class="info-chart-label">Altitude · next 24h</div>${svg}` : "";
+}
+
+function card(type: string, name: string, stats: Array<[string, string]>, chart = ""): string {
   const accent = ACCENT[type] ?? "#ffffff";
   const rows = stats
     .map(
@@ -58,6 +71,7 @@ function card(type: string, name: string, stats: Array<[string, string]>): strin
       <div class="info-name">${name}</div>
     </div>
     <div class="info-stats">${rows}</div>
+    ${chart}
   `;
 }
 
@@ -79,7 +93,7 @@ export function updateInfoPanel(observer: Observer | null = null): void {
       ["Magnitude", s.magnitude.toFixed(2)],
       ["Color index", s.colorIndex.toFixed(2)],
       ...riseSetRows(s.ra, s.dec, observer, STD_ALT_STAR),
-    ]);
+    ], altChart(s.ra, s.dec, observer));
   } else if (obj.type === "planet") {
     const p = obj.data;
     panel.innerHTML = card("PLANET", p.name, [
@@ -88,14 +102,14 @@ export function updateInfoPanel(observer: Observer | null = null): void {
       ["Magnitude", p.magnitude.toFixed(1)],
       ["Illumination", `${Math.round(p.phase * 100)}%`],
       ...riseSetRows(p.ra, p.dec, observer, STD_ALT_STAR),
-    ]);
+    ], altChart(p.ra, p.dec, observer));
   } else if (obj.type === "sun") {
     const s = obj.data;
     panel.innerHTML = card("SUN", "Sun", [
       ["Altitude", `${s.alt.toFixed(1)}°`],
       ["Azimuth", `${s.az.toFixed(1)}°`],
       ...riseSetRows(s.ra, s.dec, observer, STD_ALT_SUN),
-    ]);
+    ], altChart(s.ra, s.dec, observer));
   } else if (obj.type === "moon") {
     const m = obj.data;
     panel.innerHTML = card("MOON", "Moon", [
@@ -104,7 +118,7 @@ export function updateInfoPanel(observer: Observer | null = null): void {
       ["Illumination", `${Math.round(m.illumination * 100)}%`],
       ["Phase", moonPhaseName(m.illumination, m.waxing)],
       ...riseSetRows(m.ra, m.dec, observer, STD_ALT_STAR),
-    ]);
+    ], altChart(m.ra, m.dec, observer));
   } else if (obj.type === "satellite") {
     const s = obj.data;
     panel.innerHTML = card("SATELLITE", s.name, [
@@ -120,6 +134,6 @@ export function updateInfoPanel(observer: Observer | null = null): void {
       ["Azimuth", `${d.az.toFixed(1)}°`],
       ["Magnitude", d.magnitude.toFixed(1)],
       ...riseSetRows(d.ra, d.dec, observer, STD_ALT_STAR),
-    ]);
+    ], altChart(d.ra, d.dec, observer));
   }
 }

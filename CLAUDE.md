@@ -32,6 +32,7 @@ src/
 │   ├── riseset.ts        # Rise / transit / set + twilight times
 │   ├── passes.ts         # Visible satellite pass prediction (sunlit + observer dark)
 │   ├── referenceLines.ts # Static geometry: ecliptic path + Milky Way (galactic) band
+│   ├── altitudeTrack.ts  # Body/Sun altitude over a 24h window (info-card sparkline data)
 │   └── satellites.ts     # SGP4 propagation + sunlit/shadow test (satellite.js@4.1.4)
 ├── data/             # Data loading with IndexedDB caching
 │   ├── stars.ts          # HYG v4.1 catalog loader + CSV parser (skips Sun row id 0)
@@ -52,13 +53,14 @@ src/
 │   ├── milkyway.ts       # Additive soft-blob galactic band
 │   └── labels.ts         # Frame-scoped label declutterer (drawLabel)
 ├── components/       # DOM, device APIs, user interaction
-│   ├── InfoPanel.ts      # Tap-to-identify overlay (stars, planets, deep-sky, Moon, satellites)
+│   ├── InfoPanel.ts      # Tap-to-identify overlay + altitude-tonight sparkline
+│   ├── altitudeSparkline.ts # Pure SVG builder for the info-card altitude curve
 │   ├── HitDetection.ts   # Click/touch → nearest object
 │   ├── Orientation.ts    # DeviceOrientationEvent → azimuth/altitude (iOS webkitCompassHeading)
 │   ├── pose.ts           # Pure device(α,β,γ) → alt/az via rotation matrix (tested)
 │   ├── PermissionPrompt.ts # iOS orientation permission flow
 │   ├── LocationControl.ts  # Manual lat/long entry + GPS re-request (modal)
-│   ├── Layers.ts         # buildLayersControls() → toggles + star-density slider (in settings)
+│   ├── Layers.ts         # buildLayersControls() → toggles (incl. night vision) + Bortle slider
 │   ├── TimeControl.ts    # Time-travel panel (datetime / ±h ±d / Live)
 │   ├── Search.ts         # Object search overlay (→ "guide me there")
 │   ├── Highlights.ts     # "Tonight" feed panel
@@ -73,6 +75,7 @@ src/
 │   ├── clock.ts          # Sky time (live or scrubbed) — single source for all positions
 │   ├── fetchWithFallback.ts # Mirror fallback + retry + abort timeout (tested)
 │   ├── geo.ts            # Geolocation + localStorage persistence
+│   ├── bortle.ts         # Bortle light-pollution scale → limiting mag + Milky Way factor
 │   └── math.ts           # toRad, toDeg, normalizeAngle, clamp, lerp
 └── main.ts           # Orchestration: load → locate → render loop
 ```
@@ -146,6 +149,15 @@ Layers ▸ "Refresh data" button. `getTleMeta()` exposes cache age for the stale
 drives this; when off, the sky is forced to night (`sunAlt = -90`) with full stars. Even
 when on, star visibility is floored (0.5) so stars never fully disappear in daylight.
 
+**Light pollution + night vision.** A Bortle class (1–9, `utils/bortle.ts`) is the
+real-world light-pollution control: it sets the star `magnitudeLimit` and a Milky Way
+visibility multiplier (`bortleLevel(b).milkyWay`, applied to the Milky Way alpha in `draw`),
+so the rendered sky matches what you'd actually see from a dark site vs a city. **Night
+vision** is a CSS-only mode (`body.night-vision` → a red `mix-blend-mode: multiply` veil,
+`#night-veil`): it keeps only the red channel so the screen stops emitting blue/green light
+that spoils dark adaptation. Both live in the settings sheet; night vision is reflected onto
+the body class by `applyDisplayModes()` (no canvas redraw needed).
+
 **Satellites bypass step 3.** They are near-field (LEO ~400 km vs Earth's ~6371 km
 radius), so geocentric RA/Dec run through `equatorialToHorizontal` is off by tens of
 degrees. Instead `getVisibleSatellites(tles, date, observer)` computes true topocentric
@@ -190,7 +202,7 @@ uses `setTransform` (idempotent), not `scale` (which would compound each frame).
 
 **One control surface.** All controls live in a bottom `Toolbar` (Search · Time · Sky/Map ·
 Tonight · Settings) instead of scattered floating chips. Secondary controls (layer toggles,
-daylight, star-density, location, data refresh) live in the **settings sheet** behind the
+night vision, daylight, light pollution (Bortle), location, data refresh) live in the **settings sheet** behind the
 Settings button. Each control component exposes an `open()` handle (it no longer creates its
 own chip); main wires toolbar buttons to them. The one deliberate exception to the toolbar is
 a standalone top-right help button (`.help-fab`) that opens the tour — kept separate so a
@@ -250,8 +262,9 @@ fold notable work into "Shipped". Keep this honest — it's the single source of
   glyphs, planet glyphs (Saturn's rings, Jupiter's bands), diffraction spikes, label
   declutter, vignette/glow. Throttled draw-on-change loop.
 - **Features** — time travel (scrub any date/time), search + "guide me there" (map centering /
-  AR arrow), Tonight highlights feed, tap-to-identify info card with rise/set, tap-to-lock
-  selection that tracks the object as time advances or is scrubbed, pinch/drag zoom + pan.
+  AR arrow), Tonight highlights feed, tap-to-identify info card with rise/set + an
+  altitude-tonight sparkline, tap-to-lock selection that tracks the object as time advances or
+  is scrubbed, light-pollution (Bortle) control, night-vision (red) mode, pinch/drag zoom + pan.
 - **UI / design** — consolidated bottom toolbar + settings sheet; a standalone top-right help
   button opening a replayable, plain-language feature tour; SVG line-icon set (no emoji);
   design tokens + unified class-based panel motion; loading overlay.
@@ -260,7 +273,7 @@ fold notable work into "Shipped". Keep this honest — it's the single source of
   (mirror fallback / retry / refresh / staleness warning); device-pose model; geolocation +
   manual location.
 - **Engineering** — TDD across astronomy, geometry, data, and the orchestration engine
-  (176 tests); `main.ts` refactored into a tested `engine/` (SkyEngine + pure
+  (217 tests); `main.ts` refactored into a tested `engine/` (SkyEngine + pure
   compute/search/highlights/scheduler/status) behind a thin DOM coordinator; GitHub Actions
   CI that gates on test + build and auto-deploys `main` to GitHub Pages.
 - **Docs** — detailed README (architecture, how-it-works, accuracy, data sources) + MIT
@@ -281,15 +294,13 @@ fold notable work into "Shipped". Keep this honest — it's the single source of
   `screenshots`, and a Lighthouse pass.
 
 ### B. Make it a real observing tool (P0/P1 — highest-impact additions)
-- [ ] **Night-vision (red) mode** — a one-tap red palette that preserves dark adaptation.
-  The most-requested feature of any serious stargazing app; on-brand and visually
-  distinctive. (Palette swap behind a toggle; cheap, high payoff.)
-- [ ] **Light-pollution preset (Bortle)** — a simple "city → dark site" selector that drives
-  the limiting magnitude and dims the Milky Way, so the rendered sky matches what you can
-  actually see from where you are. (Reframes the existing magnitude slider as a real-world
-  control.)
-- [ ] **Altitude-tonight curve** in the info card — a small sparkline of an object's altitude
-  through the night (rise → transit → set), so you know *when* to look, not just *where*.
+- [x] **Night-vision (red) mode** — `body.night-vision` red multiply veil (`#night-veil`)
+  toggled from settings; keeps only the red channel to preserve dark adaptation.
+- [x] **Light-pollution (Bortle)** — a 1–9 settings slider (`utils/bortle.ts`) that drives the
+  star limiting magnitude and a Milky Way visibility multiplier, so the sky matches a dark
+  site vs a city. Replaced the abstract star-density slider.
+- [x] **Altitude-tonight curve** — info-card SVG sparkline of the object's altitude over the
+  next 24h with the dark hours shaded (`astronomy/altitudeTrack.ts` + `components/altitudeSparkline.ts`).
 - [ ] **Tappable Tonight feed** — tap any highlight (a planet, the ISS pass, a conjunction)
   to be guided straight to it. Connects the two best features with little code.
 - [ ] **Meteor-shower highlights** — an embedded shower table surfaces active showers (peak
@@ -318,19 +329,19 @@ fold notable work into "Shipped". Keep this honest — it's the single source of
 
 ## Testing Approach
 
-TDD with Vitest (196 tests, 28 files). **Unit tests are co-located** with the code they
+TDD with Vitest (217 tests, 32 files). **Unit tests are co-located** with the code they
 cover (`src/**/*.test.ts`, declared once in `vite.config.ts`) — the Vitest/TS best practice:
 a test sits next to its module, moves with it, and imports it relatively. This is deliberate;
 don't relocate tests into a separate tree. The whole suite, by layer:
 
 | Layer | Test files (`*.test.ts`) — what each covers |
 |---|---|
-| `astronomy/` | `coordinates` (eq→horizontal) · `sun` · `moon` · `planets` (7, Kepler + mags) · `precession` · `parallax` · `refraction` · `riseset` (+twilight) · `passes` · `satellites` (SGP4 + sunlit) · `referenceLines` · **`accuracy`** (cross-cutting ground-truth suite) |
+| `astronomy/` | `coordinates` (eq→horizontal) · `sun` · `moon` · `planets` (7, Kepler + mags) · `precession` · `parallax` · `refraction` · `riseset` (+twilight) · `passes` · `satellites` (SGP4 + sunlit) · `referenceLines` · `altitudeTrack` (24h altitude/Sun tracks) · **`accuracy`** (cross-cutting ground-truth suite) |
 | `engine/` | `compute` · `search` · `highlights` · `scheduler` (cadence + draw-on-change) · `status` · `SkyEngine` (load→locate→compute lifecycle) |
 | `render/` | `canvas` (both projections + optimized AR projector parity) |
-| `components/` | `HitDetection` (`pickObject`) · `pose` · `Orientation` (heading calibration) · `Tour` (content + nav) |
+| `components/` | `HitDetection` (`pickObject`) · `pose` · `Orientation` (heading calibration) · `Tour` (content + nav) · `Layers` (night-vision + Bortle state) · `altitudeSparkline` (SVG builder + altToY) |
 | `data/` | `stars` (HYG parser) · `deepSky` (catalog integrity) |
-| `utils/` | `cache` (staleness) · `clock` (sky time) · `fetchWithFallback` (mirror/retry, mocked `fetch`) |
+| `utils/` | `cache` (staleness) · `clock` (sky time) · `bortle` (light-pollution scale) · `fetchWithFallback` (mirror/retry, mocked `fetch`) |
 
 Ground truth for astronomy is cross-checked against Stellarium Web or JPL Horizons. Astronomy
 position tests use wide tolerances (±5°) — this is a visual app, not a navigation system

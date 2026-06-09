@@ -32,6 +32,7 @@ import { requestLocation, cachedLocation, saveLocation } from "./utils/geo";
 import { getSkyTime, isLive } from "./utils/clock";
 import { initLocationControl } from "./components/LocationControl";
 import { buildLayersControls, getLayers } from "./components/Layers";
+import { bortleLevel } from "./utils/bortle";
 import { initTimeControl } from "./components/TimeControl";
 import { initSearch } from "./components/Search";
 import { initHighlights } from "./components/Highlights";
@@ -300,7 +301,7 @@ function draw(): void {
   }
 
   // Reference overlays.
-  if (layers.milkyway) renderMilkyWay(rc.ctx, project, MILKYWAY, vis);
+  if (layers.milkyway) renderMilkyWay(rc.ctx, project, MILKYWAY, vis * bortleLevel(layers.bortle).milkyWay);
   if (layers.grid) {
     renderEquatorialGrid(rc.ctx, project, 1);
     renderMeridian(rc.ctx, projectAltAz, 1);
@@ -451,7 +452,16 @@ async function init() {
   document.body.appendChild(helpBtn);
 
   // --- Settings sheet contents ---
-  buildLayersControls(toolbar.settingsBody, markDirty);
+  // Night vision is a CSS-only mode (a red multiply veil over everything); reflect the
+  // layer state onto the body class. Applied on any layer change and once at startup.
+  const applyDisplayModes = () => {
+    document.body.classList.toggle("night-vision", getLayers().nightVision);
+  };
+  applyDisplayModes();
+  buildLayersControls(toolbar.settingsBody, () => {
+    applyDisplayModes();
+    markDirty();
+  });
 
   const locationRow = document.createElement("button");
   locationRow.className = "ui-chip";
