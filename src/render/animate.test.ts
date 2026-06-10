@@ -1,5 +1,19 @@
 import { describe, it, expect } from "vitest";
-import { clamp01, revealAlpha, twinkle } from "./animate";
+import { clamp01, revealAlpha, twinkle, earthshineLevel } from "./animate";
+
+describe("earthshineLevel", () => {
+  it("is strongest at a thin crescent and gone by first quarter", () => {
+    expect(earthshineLevel(0)).toBe(1); // new moon: brightest earthshine
+    expect(earthshineLevel(0.5)).toBeCloseTo(0.2, 6); // half lit: faint
+    expect(earthshineLevel(0.7)).toBe(0); // gibbous: none
+    expect(earthshineLevel(1)).toBe(0); // full: none
+  });
+
+  it("decreases monotonically as the Moon fills", () => {
+    expect(earthshineLevel(0.1)).toBeGreaterThan(earthshineLevel(0.3));
+    expect(earthshineLevel(0.3)).toBeGreaterThan(earthshineLevel(0.45));
+  });
+});
 
 describe("clamp01", () => {
   it("clamps to [0, 1]", () => {

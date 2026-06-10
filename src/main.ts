@@ -76,6 +76,14 @@ function isViewTransformed(): boolean {
   return getZoom() !== 1 || p.x !== 0 || p.y !== 0;
 }
 
+// A quick opacity dip-and-recover on the canvas (CSS) that masks the instant projection
+// swap between the map dome and the AR view, so the toggle feels like a soft crossfade.
+function flashViewSwitch(): void {
+  canvas.classList.remove("view-switching");
+  void canvas.offsetWidth; // force reflow so the animation restarts on every toggle
+  canvas.classList.add("view-switching");
+}
+
 function setStatus(msg: string) {
   statusEl.textContent = msg;
   if (loaderTextEl && !firstDrawDone && msg) loaderTextEl.textContent = msg;
@@ -448,6 +456,9 @@ function draw(t = performance.now()): void {
     renderConstellationNames(rc.ctx, project, vis);
   }
 
+  // A soft full-frame vignette frames the whole composition (UI overlays draw on top).
+  renderVignette(rc);
+
   // Keep a guided (searched) target's selection live as the sky moves.
   if (currentTarget) state.selected = targetSelection(currentTarget, engine.bodies);
   renderSelection(rc, projectAltAz);
@@ -468,6 +479,21 @@ function draw(t = performance.now()): void {
   resetBtn?.classList.toggle("show", isViewTransformed());
 
   updateInfoPanel(engine.observer);
+}
+
+// A subtle full-canvas vignette: darkens the corners to frame the scene and give it
+// depth (the dome has its own inner vignette; this also frames the AR view + the black
+// margins). Centered on the screen, not the panned dome center.
+function renderVignette(rc: RenderContext): void {
+  const cx = rc.width / 2;
+  const cy = rc.height / 2;
+  const inner = Math.min(rc.width, rc.height) * 0.46;
+  const outer = Math.hypot(cx, cy);
+  const v = rc.ctx.createRadialGradient(cx, cy, inner, cx, cy, outer);
+  v.addColorStop(0, "transparent");
+  v.addColorStop(1, "rgba(0,0,6,0.42)");
+  rc.ctx.fillStyle = v;
+  rc.ctx.fillRect(0, 0, rc.width, rc.height);
 }
 
 // Expanding, fading rings for the transient delight moments (above).
@@ -625,11 +651,13 @@ async function init() {
         showPermissionPrompt(() => {
           isSkyView = true;
           viewBtn.innerHTML = tbContent(icon("map"), "Map");
+          flashViewSwitch();
           markDirty();
         });
       } else {
         isSkyView = false;
         viewBtn.innerHTML = tbContent(icon("sky"), "Sky");
+        flashViewSwitch();
         markDirty();
       }
     },

@@ -19,10 +19,22 @@ export function renderMilkyWay(
   for (const s of samples) {
     const p = project(s.ra, s.dec);
     if (!p) continue;
-    const a = 0.05 * s.w * alpha;
+
+    // Mottled texture: a deterministic per-sample factor so the band reads as clumpy star
+    // clouds + darker rifts rather than a smooth airbrush.
+    const seed = Math.sin(s.ra * 12.9898 + s.dec * 78.233) * 43758.5453;
+    const tex = 0.7 + 0.6 * (seed - Math.floor(seed));
+    const a = 0.05 * s.w * alpha * tex;
     if (a < 0.004) continue;
+
+    // Warmer toward the bright galactic core, cooler/bluer in the faint outer arms.
+    const warm = Math.min(1, s.w);
+    const r = Math.round(190 + 48 * warm);
+    const gc = Math.round(206 + 12 * warm);
+    const b = Math.round(245 - 34 * warm);
+
     const g = ctx.createRadialGradient(p[0], p[1], 0, p[0], p[1], radius);
-    g.addColorStop(0, `rgba(200,210,245,${a.toFixed(3)})`);
+    g.addColorStop(0, `rgba(${r},${gc},${b},${a.toFixed(3)})`);
     g.addColorStop(1, "transparent");
     ctx.fillStyle = g;
     ctx.beginPath();

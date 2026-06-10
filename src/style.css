@@ -321,6 +321,18 @@ html, body {
   transform: translateY(0) scale(1);
 }
 
+/* ---- Map ↔ Sky view crossfade ---- */
+/* A quick opacity dip-and-recover that masks the instant projection swap (dome ↔ AR),
+   so switching views reads as a soft crossfade rather than a hard cut. */
+@keyframes view-fade {
+  0% { opacity: 1; }
+  38% { opacity: 0.12; }
+  100% { opacity: 1; }
+}
+#sky-canvas.view-switching {
+  animation: view-fade 0.34s ease;
+}
+
 /* ---- Night-vision mode ---- */
 /* A red multiply veil over the whole app: keeps only the red channel so the screen no
    longer emits blue/green light that spoils dark adaptation. pointer-events:none lets

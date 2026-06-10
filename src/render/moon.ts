@@ -1,5 +1,6 @@
 import { type RenderContext, type AltAzProjector } from "./canvas";
 import { drawLabel } from "./labels";
+import { earthshineLevel } from "./animate";
 import type { MoonPosition } from "../astronomy/moon";
 
 export interface RenderedMoon extends MoonPosition {
@@ -36,8 +37,14 @@ export function renderMoon(
 
   // Shadow to show phase. The terminator is symmetric about the vertical axis;
   // `waxing` decides which limb is lit (waxing = right lit in the N hemisphere).
+  // Earthshine: the unlit disc isn't pure black — it glows faintly ashen, brightest on a
+  // thin crescent and fading to near-black as the Moon waxes (covers the lit fill below).
   const litRight = moon.waxing;
-  rc.ctx.fillStyle = "rgba(0, 0, 8, 0.85)";
+  const es = earthshineLevel(illumination);
+  const er = Math.round(8 + 58 * es);
+  const eg = Math.round(11 + 66 * es);
+  const eb = Math.round(20 + 82 * es);
+  rc.ctx.fillStyle = `rgba(${er}, ${eg}, ${eb}, 0.9)`;
   rc.ctx.beginPath();
   if (illumination < 0.5) {
     // Crescent: most of the disc is dark.

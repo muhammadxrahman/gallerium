@@ -52,7 +52,7 @@ src/
 │   ├── constellations.ts # Constellation lines + decluttered names
 │   ├── grid.ts           # Equatorial grid + ecliptic polylines
 │   ├── milkyway.ts       # Additive soft-blob galactic band
-│   ├── animate.ts        # Pure reveal/twinkle math (revealAlpha, twinkle, clamp01)
+│   ├── animate.ts        # Pure reveal/twinkle/earthshine math (revealAlpha, twinkle, earthshineLevel)
 │   └── labels.ts         # Frame-scoped label declutterer (drawLabel)
 ├── components/       # DOM, device APIs, user interaction
 │   ├── InfoPanel.ts      # Tap-to-identify overlay + altitude-tonight sparkline
@@ -291,8 +291,9 @@ fold notable work into "Shipped". Keep this honest — it's the single source of
   no per-star `acos`, a |Δalt| broad-phase cull) so it stays smooth while the phone moves.
   Day/night sky, constellations + names, Milky Way, ecliptic/grid/meridian, per-kind deep-sky
   glyphs, planet glyphs (Saturn's rings, Jupiter's bands), diffraction spikes, label
-  declutter, vignette/glow. Throttled draw-on-change loop with a cinematic first-load reveal,
-  bounded delight transients (tap flash, AR arrival ring), and a gentle living-sky twinkle.
+  declutter, full-canvas vignette, Moon earthshine, color/mottled Milky Way. Throttled
+  draw-on-change loop with a cinematic first-load reveal, a map↔sky crossfade, bounded
+  delight transients (tap flash, AR arrival ring), and a gentle living-sky twinkle.
 - **Features** — time travel (scrub any date/time), search + "guide me there" (map centering /
   AR arrow), Tonight highlights feed (incl. active meteor showers, timed by solar longitude;
   ideal-ZHR rate clearly labelled), tap-to-identify info card with rise/set + an
@@ -311,7 +312,7 @@ fold notable work into "Shipped". Keep this honest — it's the single source of
   (mirror fallback / retry / refresh / staleness warning); device-pose model; geolocation +
   manual location.
 - **Engineering** — TDD across astronomy, geometry, data, and the orchestration engine
-  (279 tests), including a ground-truth accuracy suite (equinox/solstice Sun + ecliptic /
+  (281 tests), including a ground-truth accuracy suite (equinox/solstice Sun + ecliptic /
   lunar-orbit invariants + JPL planet cross-checks) and the cache-staleness logic; `main.ts`
   refactored into a tested `engine/` (SkyEngine + pure compute/search/highlights/scheduler/
   status) behind a thin DOM coordinator; GitHub Actions CI that gates on test + build and
@@ -343,16 +344,20 @@ fold notable work into "Shipped". Keep this honest — it's the single source of
 - [ ] Real-device performance profiling; layered canvases (static stars @ ~1 fps + dynamic
   satellite layer) if the sat-cadence redraw bites; smaller first load (pre-trimmed
   mag ≤ 6.5 star JSON / progressive).
-- [ ] Visual leftovers: Moon earthshine/libration, smooth map↔sky crossfade, deeper render
-  realism (Milky Way dust lanes/color, atmospheric blue-shift, full-canvas bloom). (Star
-  twinkle is now shipped as a *bounded* living-sky loop — it settles to static when idle, so
-  it doesn't break the battery model.)
+- [x] **Visual leftovers** — Moon **earthshine** (ashen unlit disc, brightest at a thin
+  crescent; `earthshineLevel` in `render/animate.ts`), a **map↔sky crossfade** (opacity
+  dip-and-recover masking the projection swap), **color + mottled texture** on the Milky Way
+  (warm core / cool arms, clumpy rather than airbrushed), and a **full-canvas vignette** that
+  frames the whole composition. *Atmospheric blue-shift* was already present (the dome/AR
+  zenith→horizon gradients). Deferred: Moon **libration** (nothing to rock — the disc has no
+  surface detail) and a true full-canvas **bloom** (`ctx.filter` blur is unreliable on iOS
+  and costs per frame in AR; the per-object glows + vignette already deliver the soft look).
 
 ---
 
 ## Testing Approach
 
-TDD with Vitest (279 tests, 40 files). **Unit tests are co-located** with the code they
+TDD with Vitest (281 tests, 40 files). **Unit tests are co-located** with the code they
 cover (`src/**/*.test.ts`, declared once in `vite.config.ts`) — the Vitest/TS best practice:
 a test sits next to its module, moves with it, and imports it relatively. This is deliberate;
 don't relocate tests into a separate tree. The whole suite, by layer:

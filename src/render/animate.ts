@@ -21,3 +21,11 @@ export function twinkle(timeMs: number, seed: number): number {
   const phase = (seed % 997) * 0.0631; // spread starting phases across stars
   return Math.sin(timeMs * 0.0021 + phase);
 }
+
+// Earthshine strength (0..1) for the Moon's unlit disc — the faint glow reflected from
+// Earth ("the old Moon in the new Moon's arms"). Brightest at a thin crescent (Earth is
+// near-full as seen from the Moon), fading to ~0 by first/last quarter. `illumination`
+// is the Moon's lit fraction (0 = new, 1 = full).
+export function earthshineLevel(illumination: number): number {
+  return clamp01(1 - illumination * 1.6);
+}

@@ -13,7 +13,7 @@ A real-time, offline-first sky map that computes the positions of stars, planets
 
 Every position in Gallerium is derived from first principles rather than fetched from a service. The inputs are a star catalog (HYG v4.1), a satellite element set (CelesTrak TLEs), the observer's latitude and longitude, and the system clock. From those, the app computes apparent topocentric positions: where each object actually appears in the sky for the observer's location at the current instant.
 
-This constraint defines the engineering: spherical coordinate transforms, orbital propagation, atmospheric and geometric corrections, a Canvas 2D renderer with two projections, an offline caching strategy, and a render loop bounded for low battery use. The astronomy is validated against Stellarium and JPL Horizons, and the codebase has 279 automated tests.
+This constraint defines the engineering: spherical coordinate transforms, orbital propagation, atmospheric and geometric corrections, a Canvas 2D renderer with two projections, an offline caching strategy, and a render loop bounded for low battery use. The astronomy is validated against Stellarium and JPL Horizons, and the codebase has 281 automated tests.
 
 ## Features
 
@@ -132,7 +132,7 @@ utils/  clock, geolocation, fetch-with-fallback, math
 | Language | TypeScript (strict) |
 | Rendering | Canvas 2D (no WebGL, no Three.js) |
 | Build | Vite |
-| Tests | Vitest, 279 tests |
+| Tests | Vitest, 281 tests |
 | Offline / PWA | `vite-plugin-pwa` (Workbox) + IndexedDB |
 | Orbit propagation | `satellite.js` (SGP4) |
 | CI/CD | GitHub Actions: test and build gate, auto-deploy to GitHub Pages |
@@ -142,7 +142,7 @@ utils/  clock, geolocation, fetch-with-fallback, math
 
 ## Testing and validation
 
-279 automated tests cover the astronomy layer, the geometry of both projections, the data parsers, the deep-sky catalog, the resilient fetch logic, and the orchestration engine (compute pipeline, search/guide resolver, Tonight feed, render-loop scheduler).
+281 automated tests cover the astronomy layer, the geometry of both projections, the data parsers, the deep-sky catalog, the resilient fetch logic, and the orchestration engine (compute pipeline, search/guide resolver, Tonight feed, render-loop scheduler).
 
 Validation uses two methods:
 
