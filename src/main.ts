@@ -137,6 +137,14 @@ let revealStart = -1; // set on the first draw; -1 = not started
 let lastInteractionAt = 0; // gates the living-sky ambient loop
 let lastSeenViewVersion = -1; // detect zoom/pan as an interaction
 
+// First-run onboarding: the tour auto-opens once, fired from the loop the moment the
+// reveal finishes (robust to load timing). The key is versioned so changing the trigger
+// re-shows it once for everyone who already onboarded. `tour` is module-scoped so the loop
+// can open it.
+const TOUR_SEEN_KEY = "gallerium-tour-seen-v2";
+let tour: { open: () => void } | null = null;
+let firstRunPending = false;
+
 // Transient expanding rings (tap-to-select flash, AR target-arrival). Each fades over `dur`.
 interface Pulse {
   x: number;
@@ -544,6 +552,14 @@ function loop(t: number): void {
     const revealing = revealStart >= 0 && t - revealStart < REVEAL_MS;
     const animating = revealing || pulses.length > 0;
 
+    // First-run tour: open it once, the moment the reveal has finished (revealStart is set
+    // on the first draw, so this waits for the sky to actually appear, robust to load time).
+    if (firstRunPending && revealStart >= 0 && !revealing) {
+      firstRunPending = false;
+      writeFlag(TOUR_SEEN_KEY);
+      tour?.open();
+    }
+
     // Living sky: a gentle redraw cadence while it's dark and the user recently
     // interacted, so the brightest stars twinkle; it settles to static when idle.
     const sunAlt = engine.bodies.sun ? engine.bodies.sun.alt : -90;
@@ -671,12 +687,12 @@ async function init() {
 
   // Top-right help button: opens the replayable feature tour. A standalone affordance
   // (not buried in settings) so a first-time user spots it immediately.
-  const tour = initTour();
+  tour = initTour();
   const helpBtn = document.createElement("button");
   helpBtn.className = "help-fab";
   helpBtn.setAttribute("aria-label", "Take a tour");
   helpBtn.innerHTML = icon("help", 22);
-  helpBtn.addEventListener("click", tour.open);
+  helpBtn.addEventListener("click", () => tour?.open());
   document.body.appendChild(helpBtn);
 
   // Reset-zoom button (top-left): appears only when zoomed/panned. The reliable way to
@@ -804,16 +820,9 @@ async function init() {
     selectSearchResult(sharedView.target);
   }
 
-  // First-run onboarding: once the reveal has landed, auto-open the tour for a brand-new
-  // visitor (and only once). Skip it if they arrived via a shared link (they came for a
-  // specific view, not a tour).
-  const TOUR_SEEN_KEY = "gallerium-seen-tour";
-  if (!sharedView.target && shouldShowFirstRun(readFlag(TOUR_SEEN_KEY))) {
-    setTimeout(() => {
-      writeFlag(TOUR_SEEN_KEY);
-      tour.open();
-    }, REVEAL_MS + 600);
-  }
+  // First-run onboarding: arm it for a brand-new visitor (skip if they arrived via a
+  // shared link — they came for a specific view). The loop opens it once the reveal lands.
+  firstRunPending = !sharedView.target && shouldShowFirstRun(readFlag(TOUR_SEEN_KEY));
 
   requestAnimationFrame(loop);
 }

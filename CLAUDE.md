@@ -344,14 +344,12 @@ fold notable work into "Shipped". Keep this honest — it's the single source of
 - [ ] Real-device performance profiling; layered canvases (static stars @ ~1 fps + dynamic
   satellite layer) if the sat-cadence redraw bites; smaller first load (pre-trimmed
   mag ≤ 6.5 star JSON / progressive).
-- [x] **Visual leftovers** — Moon **earthshine** (ashen unlit disc, brightest at a thin
-  crescent; `earthshineLevel` in `render/animate.ts`), a **map↔sky crossfade** (opacity
-  dip-and-recover masking the projection swap), **color + mottled texture** on the Milky Way
-  (warm core / cool arms, clumpy rather than airbrushed), and a **full-canvas vignette** that
-  frames the whole composition. *Atmospheric blue-shift* was already present (the dome/AR
-  zenith→horizon gradients). Deferred: Moon **libration** (nothing to rock — the disc has no
-  surface detail) and a true full-canvas **bloom** (`ctx.filter` blur is unreliable on iOS
-  and costs per frame in AR; the per-object glows + vignette already deliver the soft look).
+- [ ] Deferred visual realism (the rest of "visual leftovers" — earthshine, the map↔sky
+  crossfade, Milky Way color/texture, and a full-canvas vignette all shipped; see Rendering):
+  Moon **libration** (nothing to rock — the disc has no surface detail), a true full-canvas
+  **bloom** (`ctx.filter` blur is unreliable on iOS + costs per frame in AR; per-object glows
+  + the vignette already deliver the soft look), and Milky Way dust-lane *absorption* (the
+  additive band can't darken the stars behind it).
 
 ---
 
