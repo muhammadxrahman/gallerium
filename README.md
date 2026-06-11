@@ -5,7 +5,7 @@ A real-time, offline-first sky map that computes the positions of stars, planets
 **Live:** [muhammadxrahman.github.io/gallerium](https://muhammadxrahman.github.io/gallerium/)
 
 <p align="center">
-  <img src="docs/screenshots/01-hero.png" alt="Gallerium map view showing stars, constellation lines, the ecliptic, and labeled planets over a horizon" width="300">
+  <img src="docs/screenshots/01-hero.PNG" alt="Gallerium map view showing stars, constellation lines, the ecliptic, and labeled planets over a horizon" width="300">
 </p>
 <p align="center"><sub><b>Map (dome) view.</b> Stars colored by B-V temperature index, constellation lines, the ecliptic, and labeled planets, computed for the current location and system time.</sub></p>
 
@@ -48,22 +48,22 @@ Gallerium turns four plain inputs into a live sky: a star catalog (HYG v4.1), a 
 | Smooth at scale | Projecting ~9,000 stars each second runs off the main thread in a Web Worker, so the interface never blocks, and the render loop only redraws when something actually changes. |
 
 <p align="center">
-  <img src="docs/screenshots/02-ar-view.png" alt="AR mode overlaying constellation lines and a planet label aligned to the pointed sky direction" width="300">
+  <img src="docs/screenshots/02-ar-view.PNG" alt="AR mode overlaying constellation lines and a planet label aligned to the pointed sky direction" width="300">
 </p>
 <p align="center"><sub><b>AR mode.</b> A gnomonic projection centered on the device's orientation aligns the rendered sky with the pointed direction. A crosshair HUD reports current azimuth and altitude.</sub></p>
 
 <p align="center">
-  <img src="docs/screenshots/03-info-card.png" alt="Info card showing an object's name, magnitude, and rise and set times" width="300">
+  <img src="docs/screenshots/03-info-card.PNG" alt="Info card showing an object's name, magnitude, and rise and set times" width="300">
 </p>
 <p align="center"><sub><b>Tap to identify.</b> Object details including apparent magnitude and computed rise, transit, and set times for the observer's location.</sub></p>
 
 <p align="center">
-  <img src="docs/screenshots/04-tonight.png" alt="Tonight panel listing sunset, moon phase, planet visibility, and the next ISS pass" width="300">
+  <img src="docs/screenshots/04-tonight.PNG" alt="Tonight panel listing sunset, moon phase, planet visibility, and the next ISS pass" width="300">
 </p>
 <p align="center"><sub><b>Tonight feed.</b> Twilight times, Moon phase, planets currently up, close conjunctions, and the next visible ISS pass.</sub></p>
 
 <p align="center">
-  <img src="docs/screenshots/05-search-time.png" alt="Search overlay and time-travel control" width="300">
+  <img src="docs/screenshots/05-search-time.PNG" alt="Search overlay and time-travel control" width="300">
 </p>
 <p align="center"><sub><b>Search and time control.</b> Find and be guided to any object; set the clock to any instant to compute the corresponding sky.</sub></p>
 
