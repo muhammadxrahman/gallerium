@@ -216,6 +216,19 @@ settles to fully static. (3) **First-run onboarding**: after the reveal, `should
 auto-opens the tour once (localStorage flag). All motion math (`revealAlpha`, `twinkle`,
 `clamp01`) lives in pure `render/animate.ts` and is unit-tested.
 
+**Body compute runs in a Web Worker.** Projecting ~9k stars each second is the heaviest
+tick, so it's offloaded to `engine/compute.worker.ts` to keep the render thread smooth (no
+per-second frame hitch, even on a low-end phone). The worker holds the precessed catalog
+(sent once per load via `sendCatalog()` after `setCatalog`) and, on each `compute` message,
+runs the *same pure* `computeBodies` and posts a full `SkyBodies` back; main's `onmessage`
+assigns `engine.bodies` and `markDirty()`s. The loop calls `requestBodies(now)` (not
+`engine.recomputeBodies` directly) with a `computeInFlight` guard. **Graceful fallback:** if
+`Worker` is unavailable or one errors, `requestBodies` falls back to the synchronous
+`engine.recomputeBodies` — identical behavior. `computeBodies` stays the single tested source
+of truth (the worker is thin glue); the result is structured-cloned (a documented further
+optimization is transferring star alt/az as a `Float32Array`). Satellites stay on the main
+thread (lighter, 250 ms cadence). The worker chunk is precached by the SW, so it works offline.
+
 **initCanvas only reallocates on size change.** Assigning `canvas.width/height`
 reallocates+clears the backing store, so it's guarded behind a size check; the DPR scale
 uses `setTransform` (idempotent), not `scale` (which would compound each frame).
@@ -315,14 +328,19 @@ fold notable work into "Shipped". Keep this honest — it's the single source of
   (281 tests), including a ground-truth accuracy suite (equinox/solstice Sun + ecliptic /
   lunar-orbit invariants + JPL planet cross-checks) and the cache-staleness logic; `main.ts`
   refactored into a tested `engine/` (SkyEngine + pure compute/search/highlights/scheduler/
-  status) behind a thin DOM coordinator; GitHub Actions CI that gates on test + build and
-  auto-deploys `main` to GitHub Pages.
-- **Docs** — detailed README (architecture, how-it-works, accuracy, data sources) + MIT
-  license. (Demo media / screenshots pending real-device captures.)
+  status) behind a thin DOM coordinator; the ~9k-star body compute offloaded to a **Web
+  Worker** (with a synchronous fallback) so the render thread never hitches; GitHub Actions
+  CI that gates on test + build and auto-deploys `main` to GitHub Pages.
+- **Docs** — readability-first README (highlights, features, how-it-works, accuracy) + a
+  `DESIGN.md` engineering deep-dive (the hard problems: satellite topocentric math, the two
+  projections, the Web Worker, validation) + MIT license. (Demo media / screenshots pending
+  real-device captures.)
 
 ### A. Proof & packaging (P0)
-- [ ] **Demo media** *(user-owned)* — screen-capture GIF/video in the README, manifest
-  `screenshots`, and a Lighthouse pass.
+- [x] **Front door** — readability-first README (highlights → features → how-it-works →
+  accuracy) + a `DESIGN.md` engineering deep-dive. Done; see Shipped ▸ Docs.
+- [ ] **Demo media** *(user-owned)* — screen-capture GIF/video + the home-screen screenshots
+  the README references, the manifest `screenshots`, and a Lighthouse pass.
 - [ ] **Test coverage gaps** — the cache *staleness* logic is pure + tested (`isExpired`), but
   full IndexedDB integration would need a `fake-indexeddb` dev-dep (install was blocked), and
   the DOM-bound parts of `main.ts` (draw, tap → hit-test) remain untested (no jsdom env).

@@ -52,6 +52,16 @@ export class SkyEngine {
     return this.precessed.length > 0;
   }
 
+  // The precessed catalogs, exposed so the coordinator can hand them to the compute
+  // Web Worker once per load (the worker then projects them off the main thread).
+  getPrecessedStars(): Star[] {
+    return this.precessed;
+  }
+  getPrecessedDeepSky(): DeepSkyObject[] {
+    return this.precessedDeepSky;
+  }
+
+  // Synchronous compute on the main thread. Used as the worker fallback (and in tests).
   recomputeBodies(now: Date): void {
     if (this.observer) {
       this.bodies = computeBodies(this.precessed, this.observer, now, this.precessedDeepSky);

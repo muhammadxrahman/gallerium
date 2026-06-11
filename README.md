@@ -9,11 +9,19 @@ A real-time, offline-first sky map that computes the positions of stars, planets
 </p>
 <p align="center"><sub><b>Map (dome) view.</b> Stars colored by B-V temperature index, constellation lines, the ecliptic, and labeled planets, computed for the current location and system time.</sub></p>
 
+## Highlights
+
+- **Computed, not fetched.** Every star, planet, Moon, and satellite position is calculated on-device from published algorithms (Meeus solar/lunar theory, Keplerian orbital mechanics, SGP4). No backend, no third-party position APIs, no API keys, and $0 to run.
+- **Real satellite tracking.** Live satellites use SGP4 propagation and topocentric look angles, drawn only when they are genuinely sunlit and your sky is dark, which is when you could actually see one.
+- **Offline-first PWA.** A two-layer cache (a service-worker app shell plus IndexedDB data) lets it open and run with no network, and install to a phone home screen like a native app.
+- **Off-main-thread compute.** Projecting ~9,000 stars every second runs in a Web Worker, so the render thread never hitches, with a synchronous fallback where workers are unavailable.
+- **Validated, not just "looks right."** Positions are cross-checked against Stellarium and JPL Horizons, backed by 281 automated tests including a ground-truth accuracy suite.
+
 ## Overview
 
-Every position in Gallerium is derived from first principles rather than fetched from a service. The inputs are a star catalog (HYG v4.1), a satellite element set (CelesTrak TLEs), the observer's latitude and longitude, and the system clock. From those, the app computes apparent topocentric positions: where each object actually appears in the sky for the observer's location at the current instant.
+Gallerium turns four plain inputs into a live sky: a star catalog (HYG v4.1), a satellite element set (CelesTrak TLEs), your latitude and longitude, and the system clock. From those it computes *apparent topocentric* positions, meaning where each object actually appears for your location at this instant, then draws them in a Canvas 2D renderer with two projections: a top-down dome and a point-at-the-sky AR view. The render loop is bounded for low battery use, and the whole thing ships as an installable, offline-first PWA.
 
-This constraint defines the engineering: spherical coordinate transforms, orbital propagation, atmospheric and geometric corrections, a Canvas 2D renderer with two projections, an offline caching strategy, and a render loop bounded for low battery use. The astronomy is validated against Stellarium and JPL Horizons, and the codebase has 281 automated tests.
+**Deep dive:** [DESIGN.md](DESIGN.md) walks through the genuinely hard parts, including why satellites need different math than stars, the two projections, moving the per-second compute off the main thread, and how the astronomy is validated.
 
 ## Features
 
@@ -37,6 +45,7 @@ This constraint defines the engineering: spherical coordinate transforms, orbita
 | Coordinate display | Switch the info card between horizontal (Alt/Az) and equatorial (RA/Dec) coordinates. |
 | Optic field ring | Overlay the true field of view of a chosen binocular or telescope on the AR view. |
 | Living sky | A cinematic first-load reveal (stars fade in brightest-first, constellation lines follow) and a gentle scintillation on the brightest stars that settles to static when idle, so the battery model holds. A first-time visitor is offered the tour automatically. |
+| Smooth at scale | Projecting ~9,000 stars each second runs off the main thread in a Web Worker, so the interface never blocks, and the render loop only redraws when something actually changes. |
 
 <p align="center">
   <img src="docs/screenshots/02-ar-view.png" alt="AR mode overlaying constellation lines and a planet label aligned to the pointed sky direction" width="300">
@@ -94,6 +103,8 @@ The map and AR views share a single draw path and differ only in projection. The
 
 Computing alt/az for ~9,000 stars depends only on time and location, not on pan or zoom. The loop recomputes bodies on a 1 s cadence and satellites at 250 ms, and redraws only on an actual change: a recompute, a zoom/pan, an orientation move past a 0.05° threshold, or a tap. An idle map runs near 1 fps. The decision logic is a pure, unit-tested state machine. Animation stays inside this model: the first-load reveal and the transient delight rings are time-bounded, and the living-sky twinkle runs a low-rate ambient redraw only while it is dark and you have recently interacted, then settles to static.
 
+That per-second body projection is the heaviest work, so it runs in a **Web Worker**. The worker holds the precessed catalog and, on each tick, runs the same pure compute function and posts a positions snapshot back, keeping the render thread free of a per-second stall. If Web Workers are unavailable, the loop transparently falls back to computing on the main thread.
+
 ### Offline
 
 Two independent layers. A service worker (Workbox via `vite-plugin-pwa`) precaches the application shell. IndexedDB caches the data: the star catalog for one week, TLEs for 24 hours. Catalog and TLE fetches use ordered mirror fallback with retry and an abort timeout.
@@ -107,7 +118,7 @@ components/   DOM, device sensors, user interaction
               toolbar, search, AR orientation, location, tap-to-identify
                             |
 engine/       state and the compute pipeline, DOM-free
-              SkyEngine + compute, search, highlights, scheduler, status
+              SkyEngine + compute (+ Web Worker), search, highlights, scheduler, status
                             |
 astronomy/                          render/
 pure math, no DOM                   Canvas 2D, takes positions and draws them
@@ -131,6 +142,7 @@ utils/  clock, geolocation, fetch-with-fallback, math
 |---|---|
 | Language | TypeScript (strict) |
 | Rendering | Canvas 2D (no WebGL, no Three.js) |
+| Concurrency | Web Worker for off-main-thread star compute |
 | Build | Vite |
 | Tests | Vitest, 281 tests |
 | Offline / PWA | `vite-plugin-pwa` (Workbox) + IndexedDB |

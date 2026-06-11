@@ -47,6 +47,7 @@ import { icon } from "./components/icons";
 import { initZoom, getZoom, setZoom, getPan, getViewVersion, recentlyInteracted, centerOn, resetView } from "./components/Zoom";
 import { state } from "./store/state";
 import { SkyEngine } from "./engine/SkyEngine";
+import type { SkyBodies } from "./engine/compute";
 import { targetAltAz, targetLabel, targetSelection, metaFromSelection, metaToSearchId, type TargetMeta } from "./engine/search";
 import { createScheduler, tick, markDirty as schedMarkDirty, invalidate as schedInvalidate } from "./engine/scheduler";
 import { idleStatus as computeIdleStatus } from "./engine/status";
@@ -126,6 +127,48 @@ registerSW({
 // this module just performs the side effects it asks for (recompute, draw).
 const sched = createScheduler();
 
+// --- Off-main-thread body compute ---
+// Projecting ~9,000 stars to apparent alt/az every second is the heaviest tick, so we run
+// it in a Web Worker to keep the render thread smooth (no per-second frame hitch, even on
+// a low-end phone). If workers are unavailable or one fails to start, we transparently fall
+// back to computing synchronously on the main thread — the app behaves identically.
+let computeWorker: Worker | null = null;
+let computeInFlight = false;
+try {
+  computeWorker = new Worker(new URL("./engine/compute.worker.ts", import.meta.url), { type: "module" });
+  computeWorker.onmessage = (e: MessageEvent<SkyBodies>) => {
+    engine.bodies = e.data;
+    computeInFlight = false;
+    markDirty(); // draw the freshly-computed sky next frame
+  };
+  computeWorker.onerror = () => {
+    computeWorker = null; // fall back to synchronous compute for the rest of the session
+    computeInFlight = false;
+  };
+} catch {
+  computeWorker = null;
+}
+
+// Hand the precessed catalog to the worker (once per load / data refresh).
+function sendCatalog(): void {
+  computeWorker?.postMessage({
+    kind: "catalog",
+    stars: engine.getPrecessedStars(),
+    deepSky: engine.getPrecessedDeepSky(),
+  });
+}
+
+// Request a body recompute for `now`: off-thread when possible, synchronous otherwise.
+function requestBodies(now: Date): void {
+  if (computeWorker && engine.observer) {
+    if (computeInFlight) return; // a result is already inbound (the worker beats the cadence)
+    computeInFlight = true;
+    computeWorker.postMessage({ kind: "compute", observer: engine.observer, timeMs: now.getTime() });
+  } else {
+    engine.recomputeBodies(now);
+  }
+}
+
 // Haptic-lock state: pulse once when a guided target enters the AR crosshair (engine in
 // utils/haptics). Reset to armed whenever a new target is chosen.
 let lockArmed = true;
@@ -181,7 +224,10 @@ function idleStatus(): string {
 async function refreshData(): Promise<void> {
   setStatus("Refreshing data…");
   const [stars, tles] = await Promise.allSettled([loadStars(true), loadTLEs(true)]);
-  if (stars.status === "fulfilled") engine.setCatalog(stars.value, new Date());
+  if (stars.status === "fulfilled") {
+    engine.setCatalog(stars.value, new Date());
+    sendCatalog(); // refresh the worker's copy of the catalog
+  }
   if (tles.status === "fulfilled") engine.setTles(tles.value);
   if (stars.status === "rejected" && tles.status === "rejected") {
     setStatus("Couldn't refresh — check your connection.");
@@ -574,7 +620,7 @@ function loop(t: number): void {
       ambientActive,
     });
 
-    if (r.recomputeBodies) engine.recomputeBodies(now);
+    if (r.recomputeBodies) requestBodies(now);
     if (r.recomputeSatellites) engine.recomputeSatellites(now);
     if (r.redraw || animating) {
       draw(t);
@@ -594,6 +640,7 @@ async function init() {
     return [];
   });
   engine.setCatalog(stars, new Date());
+  sendCatalog();
 
   setStatus(
     engine.hasStars()
